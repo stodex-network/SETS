@@ -171,6 +171,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     item = value['data']['slots']['space']['fore_weapons'][0]['item']
     item.pop('icon')
     item['icon_token'] = 'phaser'
+    item['rarity'] = 'Epic'
     value['data']['slots']['space']['fore_weapons'][1] = {
         'state': 'occupied', 'item': {'id': 'missing', 'name': 'Missing icon', 'icon_token': 'missing'}}
     with ResourcesProvider(archives) as resources:
@@ -181,11 +182,25 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
             wait_for(lambda: '1 icons loaded' in page.build_status.text())
             button, missing = page.sets_controller.build.space.fore_weapons[:2]
             assert button._base.pixelColor(0, 0).getRgb() == (180, 80, 25, 255)
+            assert button._overlay == page.sets_controller.images.overlays.epic
+            assert 'Epic' in button.toolTip()
             assert button.property('buildItemId') == item['id']
             assert page.build_renderer.icon_results[('token', 'phaser')]['resolution']['member'] == member
             assert missing.property('buildItemId') == 'missing'
             assert 'Icon unavailable' in missing.toolTip()
             assert '1 unavailable' in page.build_status.text()
+            replacement = deepcopy(value)
+            replacement['revision'] += 1
+            replacement['data']['slots']['space']['fore_weapons'][0]['item']['rarity'] = 'Rare'
+            assert manager.builds.publish(replacement)
+            wait_for(lambda: '1 icons loaded' in page.build_status.text())
+            assert button._overlay == page.sets_controller.images.overlays.rare
+            assert 'Rare' in button.toolTip() and 'Epic' not in button.toolTip()
+            replacement['revision'] += 1
+            del replacement['data']['slots']['space']['fore_weapons'][0]['item']['rarity']
+            assert manager.builds.publish(replacement)
+            wait_for(lambda: '1 icons loaded' in page.build_status.text())
+            assert button._overlay is None
         finally:
             manager.close()
             adapter.close()
