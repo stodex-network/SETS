@@ -87,7 +87,7 @@ def wait_for(predicate, timeout=5000):
 
 def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkeypatch):
     from stodex_companion.operations import Operation
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[1].parent / "stodex-bridge-reshade"
     fixture = root / "results/sto-companion-mvp/bin/captain-build-fixture.json"
     if not fixture.exists():
         pytest.skip("Build the native Captain fixture first")
@@ -155,7 +155,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parents[1] / 'companion/tests/test_resources.py')
+        root.parent / 'stodex-companion/tests/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -214,7 +214,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parents[1] / "companion/tests/test_resources.py"
+    test_path = root.parent / "stodex-companion/tests/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)

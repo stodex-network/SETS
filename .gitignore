@@ -11,3 +11,6 @@ distribution/arch/pkg/
 distribution/arch/src
 distribution/arch/*.tar*
 
+
+/results/
+
