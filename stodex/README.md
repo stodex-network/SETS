@@ -15,6 +15,14 @@ companion/.venv/Scripts/python -m stodex_companion --mock --extension-dir integr
 
 Select Build in Companion. All four view buttons remain usable; the unchanged wide layout is accessible through horizontal and vertical scrolling. The supplied fixture is explicitly authored demonstration data and includes a synthetic icon path for the HOGG test fixture, so its item will retain a text placeholder against an ordinary installation. To review real images, supply exact archive/member references from the installed-game resource inventory. Missing icons or missing HOGG configuration leave item names/native IDs visible with explicit errors.
 
+For a heavily populated interactive demonstration using installed-game icons, run the showcase from the host repository root:
+
+```powershell
+companion/.venv/Scripts/python integrations/SETS/stodex/showcase.py --output results/sets-showcase
+```
+
+The showcase inventories item-icon WTEX members through the shared HOGG helper, fills space/ground display slots with distinct representative resources and records the actual helper PID, decoded icon results, source fingerprints and three fresh-read SHA-256 comparisons. It saves the supplied JSON build, space/ground screenshots and a verification receipt in the output directory. `--archive-root <piggs>` overrides installed-game discovery. This is an icon/rendering demonstration: names derive from resource filenames, categories are illustrative, and it does not claim real equipped items, legal build combinations or native item-definition joins.
+
 Run the integration check with Companion installed and the requirements above available:
 
 ```powershell
