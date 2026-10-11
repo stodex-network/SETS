@@ -151,6 +151,48 @@ def make_host(tmp_path, resources=None, build=None):
 
 
 @pytest.mark.skipif(not DEFAULT_HELPER.is_file(), reason="Build HOGG helper first")
+def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app, tmp_path):
+    from PIL import Image
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
+        root.parents[1] / 'companion/tests/test_resources.py')
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, format='DDS')
+    dds = buffer.getvalue()
+    payload = struct.pack('<II', 40, 40 + len(dds)) + b'\0' * 32 + dds
+    archives = tmp_path / 'piggs'
+    archives.mkdir()
+    member = 'Texture_Library/UI/Icons/Item_Icons/Weapons/Phaser.Wtex'
+    fixtures.write_hogg(archives / 'texture.hogg', [(member, payload, True)])
+    value = fixture_build()
+    item = value['data']['slots']['space']['fore_weapons'][0]['item']
+    item.pop('icon')
+    item['icon_token'] = 'phaser'
+    value['data']['slots']['space']['fore_weapons'][1] = {
+        'state': 'occupied', 'item': {'id': 'missing', 'name': 'Missing icon', 'icon_token': 'missing'}}
+    with ResourcesProvider(archives) as resources:
+        shell, manager, adapter = make_host(tmp_path / 'storage', resources, value)
+        try:
+            shell.select_page(('network.stodex.sets', 'build'))
+            page = shell.pages[('network.stodex.sets', 'build')]['widget']
+            wait_for(lambda: '1 icons loaded' in page.build_status.text())
+            button, missing = page.sets_controller.build.space.fore_weapons[:2]
+            assert button._base.pixelColor(0, 0).getRgb() == (180, 80, 25, 255)
+            assert button.property('buildItemId') == item['id']
+            assert page.build_renderer.icon_results[('token', 'phaser')]['resolution']['member'] == member
+            assert missing.property('buildItemId') == 'missing'
+            assert 'Icon unavailable' in missing.toolTip()
+            assert '1 unavailable' in page.build_status.text()
+        finally:
+            manager.close()
+            adapter.close()
+            shell.close()
+
+
+@pytest.mark.skipif(not DEFAULT_HELPER.is_file(), reason="Build HOGG helper first")
 def test_published_build_populates_items_from_hogg_and_survives_reactivation(app, tmp_path, monkeypatch):
     from PIL import Image
     import requests

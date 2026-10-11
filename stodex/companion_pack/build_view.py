@@ -145,6 +145,8 @@ class BuildRenderer:
                             reference = item["icon"]
                             key = (reference["archive"], reference["member"])
                             targets.setdefault(key, []).append(button)
+                        elif item.get("icon_token"):
+                            targets.setdefault(("token", item["icon_token"]), []).append(button)
                     elif state == "unknown":
                         unknown += 1
                         button.set_item(placeholder("?"))
@@ -189,7 +191,8 @@ class BuildRenderer:
             for archive, member in targets:
                 if cancelled.is_set():
                     break
-                result = context.data.query("resources", {"op": "icon", "archive": archive, "member": member})
+                arguments = {"token": member} if archive == "token" else {"archive": archive, "member": member}
+                result = context.data.query("resources", {"op": "icon", **arguments})
                 results.append(((archive, member), result))
             return results
 
