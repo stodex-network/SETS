@@ -1,0 +1,9 @@
+{
+  "id": "network.stodex.sets",
+  "name": "SETS Build Viewer",
+  "version": "0.1.0",
+  "extensionApiVersion": 1,
+  "entrypoint": "extension.py:create_extension",
+  "dependencies": [],
+  "capabilities": ["ui.pages"]
+}

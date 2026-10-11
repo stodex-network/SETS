@@ -15,7 +15,7 @@ def add_equipment_tooltip_header(
     - :param item_data: cargo data for the item
     - :param tooltip_styles: used to style the tooltip
     """
-    rarity_color = f'color:{RARITY_COLORS[item['rarity']]};'
+    rarity_color = f"color:{RARITY_COLORS[item['rarity']]};"
     head_style = tooltip_styles.equipment_name + rarity_color
     subhead_style = tooltip_styles.equipment_type_subheader + rarity_color
     item_title = item['item']

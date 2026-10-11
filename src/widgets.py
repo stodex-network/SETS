@@ -1,6 +1,6 @@
 from collections import namedtuple
 from pathlib import Path
-from typing import Callable, Generator, Iterable
+from typing import Callable, Generator, Iterable, TypeVar
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, Signal, Slot
 from PySide6.QtGui import (
@@ -394,7 +394,10 @@ class pixel_range():
         return self.__gen
 
 
-def bundle[_T](*iterables: Iterable[_T]) -> Generator[_T, None, None]:
+_T = TypeVar('_T')
+
+
+def bundle(*iterables: Iterable[_T]) -> Generator[_T, None, None]:
     """
     Generator yielding the items of the given iterables in the order they were provided.
 

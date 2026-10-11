@@ -41,7 +41,7 @@ from .widgets import (
 
 class SETS():
 
-    def __init__(self, args, app_dir_path: str, version: str):
+    def __init__(self, args, app_dir_path: str, version: str, *, hosted: bool = False):
         """
         Creates new Instance of SETS
 
@@ -98,6 +98,10 @@ class SETS():
         self.context_menu: ContextMenu = ContextMenu(self.theme, self.build, self.cargo)
         self.context_menu.edit_slot.connect(self.edit_window.edit_item)
         self.setup_main_layout()
+        self.abort_start: bool = False
+        if hosted:
+            # The host owns visibility, backend initialization and the event loop.
+            return
         self.window.show()
         self.abort_start: bool = False
         if self.adjust_window_size():

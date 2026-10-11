@@ -1,4 +1,5 @@
 .config/
+.pytest_cache/
 images/
 ..debug/
 __pycache__/
