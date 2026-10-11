@@ -2,6 +2,7 @@
 """Read-only SETS page using Companion builds and HOGG resources."""
 import importlib.util
 import sys
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from .build_view import BuildRenderer
@@ -10,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QLabel, QLineEdit, QPlainTextEdit,
-    QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSlider, QVBoxLayout, QHBoxLayout, QWidget,
 )
 
 
@@ -77,7 +78,12 @@ def create_view(root, storage):
     label = QLabel("SETS build preview · No live player build loaded")
     label.setTextFormat(Qt.TextFormat.PlainText)
     label.setWordWrap(True)
-    layout.addWidget(label)
+    header = QHBoxLayout()
+    header.addWidget(label, 1)
+    refresh = QPushButton("Read current Captain")
+    refresh.setObjectName("sets-read-current-captain")
+    header.addWidget(refresh)
+    layout.addLayout(header)
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setWidget(controller.window)
@@ -86,6 +92,7 @@ def create_view(root, storage):
     page.sets_controller = controller
     page.build_status = label
     page.sets_scroll = scroll
+    page.read_current_captain = refresh
     return page
 
 
@@ -93,6 +100,7 @@ class Extension:
     def activate(self, context):
         self.context = context
         self.view = None
+        self.pending_read = None
         context.ui.register_page("build", "Build", self.page)
         context.builds.subscribe(self.changed)
 
@@ -105,12 +113,55 @@ class Extension:
         self.view = create_view(root, self.context.storage.path.parent / "sets-preview")
         self.view.build_renderer = BuildRenderer(self.view, self.context)
         self.view.build_renderer.update(self.context.builds.get())
+        self.context.ui.connect(self.view.read_current_captain.clicked, self.read_current)
         return self.view
+
+    def read_current(self):
+        if self.pending_read is not None:
+            return
+        from stodex_companion.build_projection import from_bridge
+        context, page = self.context, self.view
+        if not context.game.capability("captain.build.get").get("available"):
+            page.build_status.setText("Current Captain read unavailable: connect to Bridge 0.2.5 or later")
+            return
+        root = Path(__file__).resolve().parents[2]
+        space = json.loads((root / "local/space_skills.json").read_text(encoding="utf-8"))["space"]
+        ground = json.loads((root / "local/ground_skills.json").read_text(encoding="utf-8"))["ground"]
+        layout = {"space": {career: [] for career in ("eng", "sci", "tac")}, "ground": [[] for _ in range(4)]}
+        for tier in space:
+            for group in tier:
+                layout["space"][group["career"]].extend(node["image"] for node in group["nodes"])
+        for group in ground:
+            layout["ground"][group["tree"]].extend(node["image"] for node in group["nodes"])
+        page.read_current_captain.setEnabled(False)
+        page.build_status.setText("Reading current Captain…")
+        captain_before = context.state.get("captain")
+        actor_before = captain_before.data.get("captain_id") if captain_before else None
+        self.pending_read = context.game.captain_build_get()
+        def completed(result):
+            self.pending_read = None
+            page.read_current_captain.setEnabled(True)
+            if result.status != "succeeded":
+                page.build_status.setText("Captain read failed: " + str((result.error or {}).get("code", result.status)))
+                return
+            try:
+                current = context.state.get("captain")
+                actor_now = current.data.get("captain_id") if current else None
+                if actor_before != actor_now or (actor_now is not None and result.data["data"].get("active_entity_id") != actor_now):
+                    page.build_status.setText("Captain read discarded: active Captain changed")
+                    return
+                snapshot = from_bridge(result.data, layout)
+                if not context.builds.publish(snapshot):
+                    page.build_status.setText("Captain read discarded: session/scene changed or an older copy arrived")
+            except (ValueError, TypeError, KeyError) as error:
+                page.build_status.setText("Captain read unavailable: " + str(error))
+        self.pending_read.then(completed)
 
     def deactivate(self):
         if self.view is not None:
             self.view.build_renderer.close()
         self.view = None
+        self.pending_read = None
         self.context = None
 
 

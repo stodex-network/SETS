@@ -85,6 +85,58 @@ def wait_for(predicate, timeout=5000):
     assert predicate(), "Build/icon delivery did not complete"
 
 
+def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkeypatch):
+    from stodex_companion.operations import Operation
+    root = Path(__file__).resolve().parents[3]
+    fixture = root / "results/sto-companion-mvp/bin/captain-build-fixture.json"
+    if not fixture.exists():
+        pytest.skip("Build the native Captain fixture first")
+    shell, manager, adapter = make_host(tmp_path)
+    key = ("network.stodex.sets", "build")
+    pending = []
+    original = adapter.request
+    def request(name, arguments, origin="host"):
+        if name != "captain.build.get":
+            return original(name, arguments, origin)
+        assert arguments == {}
+        operation = Operation(name, origin, lambda _: None)
+        pending.append(operation)
+        return operation
+    monkeypatch.setattr(adapter, "request", request)
+    adapter.capabilities["captain.build.get"] = {"available": True, "status": "available"}
+    try:
+        shell.select_page(key)
+        page = shell.pages[key]["widget"]
+        assert pending == []
+        page.read_current_captain.click()
+        assert len(pending) == 1 and not page.read_current_captain.isEnabled()
+        value = json.loads(fixture.read_text())["native"]
+        # The native bounds fixture deliberately puts three positions in Body.
+        # Supply one armor position for this separate display/lifecycle test.
+        value["data"]["equipment"]["captain"][0]["slots"] = value["data"]["equipment"]["captain"][0]["slots"][:1]
+        value.update(session_id=manager.state.session_id, scene_epoch=manager.state.scene_epoch,
+                     revision=1, observed_at_utc="2026-10-11T20:00:00Z", source="captain_self_read", consistency="identity_checked")
+        captain = manager.state.get("captain")
+        value["data"]["active_entity_id"] = captain.data.get("captain_id") or value["data"]["active_entity_id"]
+        pending[0].finish("succeeded", value)
+        wait_for(lambda: manager.builds.get() is not None)
+        assert page.read_current_captain.isEnabled()
+        assert page.sets_controller.build.ground.armor[0].property("buildItemId") == "Native_Armor"
+        retained = manager.builds.get()
+        assert retained.observation.data["native"]["traits"]["primary"]["slots"][0]["power_id"] == 7
+        page.read_current_captain.click()
+        assert len(pending) == 2
+        manager.deactivate(key[0])
+        value["revision"] = 2
+        pending[1].finish("succeeded", value)
+        QTest.qWait(50)
+        assert manager.builds.get() is retained
+    finally:
+        manager.close()
+        adapter.close()
+        shell.close()
+
+
 def fixture_build():
     return json.loads((Path(__file__).parent / "build-fixture.json").read_text(encoding="utf-8"))
 
