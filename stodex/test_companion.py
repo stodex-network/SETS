@@ -141,13 +141,151 @@ def fixture_build():
     return json.loads((Path(__file__).parent / "build-fixture.json").read_text(encoding="utf-8"))
 
 
-def make_host(tmp_path, resources=None, build=None):
-    return create_host(SimpleNamespace(
+def make_host(tmp_path, resources=None, build=None, catalogue=None):
+    # Explicit offline catalogue fixture; deactivate the shipped network fallback for these tests.
+    providers = {"catalogue": catalogue or SimpleNamespace(query=lambda _: {"availability": "unavailable", "reason": "Offline fixture"})}
+    if resources:
+        providers["resources"] = resources
+    result = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
         extension_dir=[Path(__file__).parent],
-        data=Data({"resources": resources}) if resources else Data(),
+        data=Data(providers),
         build_snapshot=build,
     ))
+    result[1].deactivate("network.stodex.stowiki-data")
+    return result
+
+
+def test_catalogue_provider_is_interchangeable_and_uses_upstream_tooltip(app, tmp_path):
+    class Catalogue:
+        def __init__(self):
+            self.threads, self.queries = [], []
+
+        def query(self, query):
+            self.threads.append(QThread.currentThread())
+            self.queries.append(query)
+            return {"schema_version": 1, "availability": "available", "source": "stodex-fixture",
+                    "data": {"results": [{"availability": "available", "record": {
+                        "id": "definition:" + item["id"], "kind": query["kind"], "name": "Catalogue name",
+                        "type": "Ship Weapon", "rarity": "Common", "description": [
+                            {"kind": "heading", "format": "text", "text": "Weapon effects"},
+                            {"kind": "text", "format": "text", "text": "Catalogue <damage> & description"}]}}
+                        for item in query["items"]]}}
+    catalogue = Catalogue()
+    build = fixture_build()
+    shell, manager, adapter = make_host(tmp_path, build=build, catalogue=catalogue)
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        wait_for(lambda: "descriptions loaded" in page.build_status.text())
+        button = page.sets_controller.build.space.fore_weapons[0]
+        assert "Catalogue &lt;damage&gt; &amp; description" in button.tooltip
+        assert "Phaser Beam Array" in button.tooltip and "Catalogue name" not in button.tooltip
+        assert "Common Ship Weapon" not in button.tooltip
+        assert "color:" in button.tooltip and "Mk XV" in button.tooltip
+        assert button.property("buildItemId") == "fixture-phaser"
+        assert all(thread is not app.thread() for thread in catalogue.threads)
+        assert catalogue.queries[0]["items"][0]["id"] == "fixture-phaser"
+        assert manager.builds.get().to_dict() == build
+        assert "stodex-fixture" in page.build_status.text()
+    finally:
+        manager.close(); adapter.close(); shell.close()
+
+
+def test_catalogue_priority_changes_reenrich_existing_build(app, tmp_path):
+    def catalogue(source):
+        def query(key):
+            return {"schema_version": 1, "availability": "available", "source": source, "data": {"results": [
+                {"availability": "available", "record": {"id": source + ":" + item["id"], "type": "Ship Weapon",
+                    "description": [{"kind": "text", "format": "text", "text": source + " description"}]}}
+                for item in key["items"]]}}
+        return SimpleNamespace(query=query)
+    build = fixture_build()
+    shell, manager, adapter = make_host(tmp_path, build=build, catalogue=catalogue("backup"))
+    try:
+        key = ("network.stodex.sets", "build")
+        shell.select_page(key)
+        page = shell.pages[key]["widget"]
+        button = page.sets_controller.build.space.fore_weapons[0]
+        wait_for(lambda: "backup description" in button.tooltip)
+        token = manager.data.register("catalogue", catalogue("primary"), priority=200, source="primary-extension")
+        wait_for(lambda: "primary description" in button.tooltip)
+        assert "backup description" not in button.tooltip
+        assert button.property("buildItemId") == "fixture-phaser"
+        token.close()
+        wait_for(lambda: "backup description" in button.tooltip)
+        assert "primary description" not in button.tooltip
+        assert manager.builds.get().to_dict() == build
+        assert not manager.packages[key[0]].error
+    finally:
+        manager.close(); adapter.close(); shell.close()
+
+
+def test_late_catalogue_response_cannot_replace_new_build_or_disabled_view(app, tmp_path):
+    started, release = threading.Event(), threading.Event()
+    class DelayedCatalogue:
+        def query(self, query):
+            started.set()
+            assert release.wait(5)
+            return {"schema_version": 1, "availability": "available", "source": "delayed", "data": {"results": [
+                {"availability": "available", "record": {"type": "Ship Weapon", "description": [
+                    {"kind": "text", "format": "text", "text": "OLD CATALOGUE RESPONSE"}]}} for _ in query["items"]]}}
+    shell, manager, adapter = make_host(tmp_path, build=fixture_build(), catalogue=DelayedCatalogue())
+    try:
+        key = ("network.stodex.sets", "build")
+        shell.select_page(key)
+        page = shell.pages[key]["widget"]
+        wait_for(started.is_set)
+        replacement = fixture_build()
+        replacement["revision"] += 1
+        replacement["data"]["slots"] = {"space": {"fore_weapons": [{"state": "empty"}]}}
+        assert manager.builds.publish(replacement)
+        release.set()
+        QTest.qWait(100)
+        button = page.sets_controller.build.space.fore_weapons[0]
+        assert button.property("buildSlotState") == "empty"
+        assert "OLD CATALOGUE RESPONSE" not in button.tooltip
+        manager.deactivate(key[0])
+        QTest.qWait(50)
+        assert key not in shell.pages and not manager.packages[key[0]].error
+    finally:
+        release.set(); manager.close(); adapter.close(); shell.close()
+
+
+def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp_path, monkeypatch):
+    import importlib
+    # Load the source extension independently, exactly as the real host does.
+    module_name = "_sets_test_wiki_source"
+    source_root = Path(__file__).resolve().parents[3] / "companion/src/stodex_companion/extensions/stowiki_data"
+    spec = importlib.util.spec_from_file_location(module_name, source_root / "extension.py", submodule_search_locations=[str(source_root)])
+    module = importlib.util.module_from_spec(spec)
+    import sys
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    records = importlib.import_module(module_name + ".records")
+    raw = []
+    for name, type_ in [("Phaser Beam Array Mk XV [Dmg]", "Ship Weapon"), ("Example Console", "Universal Console"),
+                        ("Science Console", "Ship Science Console"), ("Example Armor", "Body Armor"),
+                        ("Hangar - Elite Excluded", "Hangar Bay")]:
+        row = {"Page": name, "name": name, "type": type_, "rarity": "Common", "who": "Starship",
+               **{prefix + str(i): None for i in range(1, 10) for prefix in ("head", "subhead", "text")}}
+        row.update(head1="[[Phaser]]", subhead1="Energy", text1="* 100 '''Damage'''\n:Indented")
+        raw.append(row)
+    normalized = records.normalize("equipment", raw)
+    shell, manager, adapter = make_host(tmp_path)
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        cargo = page.sets_controller.cargo
+        monkeypatch.setattr(cargo, "get_cargo_data", lambda *_: raw)
+        cargo.cache_equipment_data()
+        for category, entries in cargo.equipment.items():
+            assert set(entries) == {record["name"] for record in normalized if category in record["categories"]}
+        renderer = importlib.import_module("_stodex_ext_network_stodex_sets.catalogue_view")
+        phaser = next(record for record in normalized if record["name"] == "Phaser Beam Array")
+        assert renderer.description(phaser["description"], page.sets_controller.theme.tooltips) == cargo.equipment["fore_weapons"]["Phaser Beam Array"]["tooltip"]
+    finally:
+        manager.close(); adapter.close(); shell.close()
 
 
 @pytest.mark.skipif(not DEFAULT_HELPER.is_file(), reason="Build HOGG helper first")

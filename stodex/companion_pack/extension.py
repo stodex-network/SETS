@@ -103,6 +103,7 @@ class Extension:
         self.pending_read = None
         context.ui.register_page("build", "Build", self.page)
         context.builds.subscribe(self.changed)
+        context.data.subscribe("catalogue", lambda _: self.changed(context.builds.get()))
 
     def changed(self, snapshot):
         if self.view is not None:

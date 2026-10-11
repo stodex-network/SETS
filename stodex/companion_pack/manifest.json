@@ -1,7 +1,7 @@
 {
   "id": "network.stodex.sets",
   "name": "SETS Build Viewer",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "extensionApiVersion": 1,
   "entrypoint": "extension.py:create_extension",
   "dependencies": [],
@@ -9,6 +9,7 @@
     "ui.pages",
     "builds.snapshots",
     "data.resources",
+    "data.catalogue",
     "background.tasks",
     "game.captain-build.read"
   ]

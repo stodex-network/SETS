@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Canonical observations populate upstream widgets without catalogue-name joins."""
+"""Render observations directly; enrich descriptions through Companion catalogues."""
 import base64
 import hashlib
 import html
@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
 from stodex_companion.sdk.builds import BUILD_SLOTS
+from .catalogue_view import catalogue_tooltip
 
 
 def placeholder(text):
@@ -41,6 +42,7 @@ class BuildRenderer:
         self.work = None
         self.cancelled = None
         self.snapshot = None
+        self.catalogue_work = None
 
     def close(self):
         self.generation += 1
@@ -48,11 +50,18 @@ class BuildRenderer:
             self.cancelled.set()
         if self.work:
             self.work.close()
+        if self.catalogue_work:
+            self.catalogue_work.close()
         self.work = None
+        self.catalogue_work = None
 
     def update(self, snapshot):
         self.close()
         self.snapshot = snapshot
+        self.cancelled = threading.Event()
+        self.icon_status = self.catalogue_status = ""
+        self.icon_errors = {}
+        self.catalogue_results = {}
         page, controller = self.page, self.page.sets_controller
         scroll = (page.sets_scroll.horizontalScrollBar().value(),
                   page.sets_scroll.verticalScrollBar().value())
@@ -93,7 +102,7 @@ class BuildRenderer:
                 combo.clear()
                 combo.addItem(f"Officer {index + 1}" if combos is controller.build.ground.boff_profs else "Not observed")
                 combo.blockSignals(False)
-        targets = {}
+        targets, catalogue_targets = {}, {}
         if "icon" in ship:
             reference = ship["icon"]
             targets[(reference["archive"], reference["member"])] = [controller.build.ship.image]
@@ -135,6 +144,10 @@ class BuildRenderer:
                     if state == "occupied":
                         occupied += 1
                         item = slot["item"]
+                        kind = {"traits": "traits", "rep_traits": "traits", "active_rep_traits": "traits",
+                                "starship_traits": "starship_traits", "boffs": "boff_abilities"}.get(category, "equipment")
+                        lookup = (kind, environment, category, item["id"], item.get("name", ""))
+                        catalogue_targets.setdefault(lookup, []).append((button, item))
                         button.setProperty("buildItemId", item["id"])
                         button.set_item(placeholder(item.get("name") or item["id"]))
                         rarity = item.get("rarity", "").lower().replace(" ", "")
@@ -177,13 +190,15 @@ class BuildRenderer:
         page.build_status.setText(self.summary)
         page.sets_scroll.horizontalScrollBar().setValue(scroll[0])
         page.sets_scroll.verticalScrollBar().setValue(scroll[1])
+        self.load_catalogue(catalogue_targets)
         if not targets:
             return
         if not self.context.data.has_provider("resources"):
-            page.build_status.setText(self.summary + " · Icons unavailable: HOGG resources not configured")
+            self.icon_status = "Icons unavailable: HOGG resources not configured"
+            self.show_status()
             return
         generation = self.generation
-        cancelled = self.cancelled = threading.Event()
+        cancelled = self.cancelled
         context = self.context
 
         def load():
@@ -215,6 +230,7 @@ class BuildRenderer:
                 if image.isNull():
                     missing += 1
                     for button in targets[key]:
+                        self.icon_errors[id(button)] = reason
                         text = "<br>Icon unavailable: " + html.escape(reason)
                         if hasattr(button, "tooltip"):
                             button.tooltip += text
@@ -225,7 +241,63 @@ class BuildRenderer:
                             button.set_item(image)
                         else:
                             button.set_image(image)
-            self.page.build_status.setText(self.summary + f" · {len(results) - missing} icons loaded · {missing} unavailable")
+            self.icon_status = f"{len(results) - missing} icons loaded · {missing} unavailable"
+            self.show_status()
 
-        page.build_status.setText(self.summary + " · Loading HOGG icons…")
+        self.icon_status = "Loading HOGG icons…"
+        self.show_status()
         self.work = context.tasks.submit(load, delivered)
+
+    def show_status(self):
+        self.page.build_status.setText(" · ".join(filter(None, (self.summary, self.icon_status, self.catalogue_status))))
+
+    def load_catalogue(self, targets):
+        if not targets:
+            return
+        context = self.context
+        if not context.data.has_provider("catalogue"):
+            self.catalogue_status = "Descriptions unavailable: no catalogue datasource"
+            self.show_status()
+            return
+        generation, cancelled = self.generation, self.cancelled
+        def load():
+            groups = {}
+            for key in targets:
+                groups.setdefault(key[0], []).append(key)
+            results = []
+            for kind, keys in groups.items():
+                if cancelled.is_set():
+                    break
+                query = {"op": "lookup", "kind": kind, "items": [
+                    {"id": key[3], "name": key[4], "environment": key[1], "category": key[2]} for key in keys]}
+                results.append((keys, context.data.query("catalogue", query)))
+            return results
+        def delivered(groups):
+            if generation != self.generation:
+                return
+            loaded = 0
+            source = "catalogue"
+            for keys, response in groups:
+                source = response.get("source", source)
+                values = response.get("data", {}).get("results", ()) if response.get("schema_version") == 1 else ()
+                for index, key in enumerate(keys):
+                    result = values[index] if index < len(values) else {"availability": "unavailable", "reason": response.get("reason", "Invalid catalogue response")}
+                    self.catalogue_results[key] = result
+                    if result.get("availability") != "available":
+                        continue
+                    try:
+                        rendered = [(button, catalogue_tooltip(item, result["record"], self.page.sets_controller.theme.tooltips,
+                                                              result.get("provenance", response.get("provenance")))) for button, item in targets[key]]
+                    except (ValueError, TypeError, KeyError):
+                        continue
+                    loaded += 1
+                    for button, text in rendered:
+                        if id(button) in self.icon_errors:
+                            text += "<br>Icon unavailable: " + html.escape(self.icon_errors[id(button)])
+                        button.tooltip = text
+                        button.setToolTip(text)
+            self.catalogue_status = f"{loaded} descriptions loaded · {len(targets) - loaded} unmatched · {source}"
+            self.show_status()
+        self.catalogue_status = "Loading catalogue descriptions…"
+        self.show_status()
+        self.catalogue_work = context.tasks.submit(load, delivered)
