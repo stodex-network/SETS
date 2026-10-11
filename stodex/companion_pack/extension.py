@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Opt-in, offline SETS page using Companion's public extension API."""
+"""Read-only SETS page using Companion builds and HOGG resources."""
 import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from .build_view import BuildRenderer
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
@@ -50,6 +51,8 @@ def create_view(root, storage):
     storage.mkdir(parents=True, exist_ok=True)
     controller = HostedSETS(SimpleNamespace(config_dir=str(storage)), str(root),
                             "3.1.2 / STOdex preview", hosted=True)
+    # Observed builds are read-only; widget callbacks must never persist a projection.
+    controller.build.autosave = lambda: None
     # Only bundled static definitions and local images; no Cargo or download workers.
     controller.images.load_base_images()
     controller.init_ui()
@@ -73,6 +76,7 @@ def create_view(root, storage):
     layout = QVBoxLayout(page)
     label = QLabel("SETS build preview · No live player build loaded")
     label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setWordWrap(True)
     layout.addWidget(label)
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
@@ -80,19 +84,33 @@ def create_view(root, storage):
     layout.addWidget(scroll)
     # Retain Python controller/signal owners for the lifetime of the contributed page.
     page.sets_controller = controller
+    page.build_status = label
+    page.sets_scroll = scroll
     return page
 
 
 class Extension:
     def activate(self, context):
         self.context = context
+        self.view = None
         context.ui.register_page("build", "Build", self.page)
+        context.builds.subscribe(self.changed)
+
+    def changed(self, snapshot):
+        if self.view is not None:
+            self.view.build_renderer.update(snapshot)
 
     def page(self):
         root = Path(__file__).resolve().parents[2]
-        return create_view(root, self.context.storage.path.parent / "sets-preview")
+        self.view = create_view(root, self.context.storage.path.parent / "sets-preview")
+        self.view.build_renderer = BuildRenderer(self.view, self.context)
+        self.view.build_renderer.update(self.context.builds.get())
+        return self.view
 
     def deactivate(self):
+        if self.view is not None:
+            self.view.build_renderer.close()
+        self.view = None
         self.context = None
 
 
