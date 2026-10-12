@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from .build_view import BuildRenderer
-from .captain_layout import skill_layout
 from .game_art import GameArt, prepare_images
 
 from PySide6.QtCore import Qt
@@ -151,18 +150,11 @@ class Extension:
     def read_current(self):
         if self.pending_read is not None:
             return
-        from stodex_companion.build_projection import from_bridge
         context, page = self.context, self.view
-        if not context.game.capability("captain.build.get").get("available"):
-            self.read_failed("Current Captain read unavailable: connect to Bridge 0.2.5 or later")
-            return
-        layout = skill_layout()
         page.read_current_captain.setEnabled(False)
         page.read_current_captain.setText("Reading Captain…")
         page.build_status.setText("Reading current Captain…")
-        captain_before = context.state.get("captain")
-        actor_before = captain_before.data.get("captain_id") if captain_before else None
-        self.pending_read = context.game.captain_build_get()
+        self.pending_read = context.builds.read_current()
         def completed(result):
             self.pending_read = None
             page.read_current_captain.setEnabled(True)
@@ -170,18 +162,6 @@ class Extension:
             page.read_current_captain.setToolTip("Read your Captain from the connected STO session")
             if result.status != "succeeded":
                 self.read_failed("Captain read failed: " + str((result.error or {}).get("code", result.status)))
-                return
-            try:
-                current = context.state.get("captain")
-                actor_now = current.data.get("captain_id") if current else None
-                if actor_before != actor_now or (actor_now is not None and result.data["data"].get("active_entity_id") != actor_now):
-                    self.read_failed("Captain read discarded: active Captain changed")
-                    return
-                snapshot = from_bridge(result.data, layout)
-                if not context.builds.publish(snapshot):
-                    self.read_failed("Captain read discarded: session/scene changed or an older copy arrived")
-            except (ValueError, TypeError, KeyError) as error:
-                self.read_failed("Captain read unavailable: " + str(error))
         self.pending_read.then(completed)
 
     def read_failed(self, message):

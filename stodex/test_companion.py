@@ -127,6 +127,7 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
                      revision=1, observed_at_utc="2026-10-11T20:00:00Z", source="captain_self_read", consistency="identity_checked")
         captain = manager.state.get("captain")
         value["data"]["active_entity_id"] = captain.data.get("captain_id") or value["data"]["active_entity_id"]
+        value["data"]["captain_id"] = captain.data.get("captain_id") or value["data"]["captain_id"]
         pending[0].finish("succeeded", value)
         wait_for(lambda: manager.builds.get() is not None)
         assert page.read_current_captain.isEnabled()
