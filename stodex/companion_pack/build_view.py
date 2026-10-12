@@ -63,6 +63,7 @@ class BuildRenderer:
         self.icon_status = self.catalog_status = ""
         self.icon_errors = {}
         self.catalog_results = {}
+        self.catalog_image_results = {}
         page, controller = self.page, self.page.sets_controller
         scroll = (page.sets_scroll.horizontalScrollBar().value(),
                   page.sets_scroll.verticalScrollBar().value())
@@ -366,14 +367,28 @@ class BuildRenderer:
                     break
                 query = {"op": "lookup", "kind": kind, "items": [
                     {"id": key[3], "name": key[4], "environment": key[1], "category": key[2]} for key in keys]}
-                results.append((keys, context.data.query("catalog", query)))
+                response = context.data.query("catalog", query)
+                values = response.get("data", {}).get("results", ())
+                images, downloaded = {}, {}
+                for key, result in zip(keys, values):
+                    if cancelled.is_set():
+                        break
+                    # Explicit native icon evidence keeps ownership of its artwork.
+                    if any("icon" in item or item.get("icon_token") for _, item in targets[key]):
+                        continue
+                    identity = result.get("record", {}).get("image", {}).get("id") if result.get("availability") == "available" else None
+                    if isinstance(identity, str):
+                        if identity not in downloaded:
+                            downloaded[identity] = context.data.query("resources", {"op": "get", "path": ["images", identity]})
+                        images[key] = downloaded[identity]
+                results.append((keys, response, images))
             return results
         def delivered(groups):
             if generation != self.generation:
                 return
             loaded = 0
             source = "catalog"
-            for keys, response in groups:
+            for keys, response, images in groups:
                 source = response.get("source", source)
                 values = response.get("data", {}).get("results", ()) if response.get("schema_version") == 1 else ()
                 for index, key in enumerate(keys):
@@ -387,7 +402,22 @@ class BuildRenderer:
                     except (ValueError, TypeError, KeyError):
                         continue
                     loaded += 1
+                    image_result = images.get(key)
+                    image = QImage()
+                    if image_result is not None:
+                        self.catalog_image_results[key] = image_result
+                        if image_result.get("availability") in {"available", "partial"}:
+                            try:
+                                value = image_result["data"]["value"]
+                                png = base64.b64decode(value["data"], validate=True)
+                                if value["format"] != "png" or len(png) > 4 * 1024 * 1024 or len(png) != value["bytes"] or hashlib.sha256(png).hexdigest() != value["sha256"]:
+                                    raise ValueError("Catalog image fingerprint mismatch")
+                                image.loadFromData(png, "PNG")
+                            except (ValueError, KeyError, TypeError):
+                                pass
                     for button, text in rendered:
+                        if not image.isNull():
+                            button.set_item(image)
                         if id(button) in self.icon_errors:
                             text += "<br>Icon unavailable: " + html.escape(self.icon_errors[id(button)])
                         button.tooltip = text

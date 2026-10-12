@@ -604,3 +604,36 @@ def test_late_icon_delivery_cannot_overwrite_new_build(app, tmp_path):
         manager.close()
         adapter.close()
         shell.close()
+
+
+def test_catalog_image_identity_supplies_static_art_without_replacing_native_identity(app, tmp_path):
+    from PIL import Image
+    output = io.BytesIO()
+    Image.new("RGBA", (8, 8), "magenta").save(output, format="PNG")
+    png = output.getvalue()
+    calls = []
+    def resources(query):
+        calls.append(query)
+        if query.get("op") != "get":
+            return {"availability": "unavailable"}
+        assert tuple(query["path"]) == ("images", "stowiki-image:Catalog Image")
+        return {"schema_version": 1, "availability": "available", "source": "sets-data",
+                "data": {"value": {"format": "png", "data": base64.b64encode(png).decode(), "bytes": len(png), "sha256": hashlib.sha256(png).hexdigest()}}}
+    def catalog(query):
+        return {"schema_version": 1, "availability": "available", "source": "fixture",
+                "data": {"results": [{"availability": "available", "record": {
+                    "id": "matched:" + item["id"], "type": "Ship Weapon", "description": [],
+                    "image": {"id": "stowiki-image:Catalog Image"}}} for item in query["items"]]}}
+    build = fixture_build()
+    build["data"]["slots"]["space"]["fore_weapons"][0]["item"].pop("icon")
+    shell, manager, adapter = make_host(tmp_path, build=build, catalog=SimpleNamespace(query=catalog), resources=SimpleNamespace(query=resources))
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        button = page.sets_controller.build.space.fore_weapons[0]
+        wait_for(lambda: button._base.pixelColor(0, 0).name() == '#ff00ff')
+        assert button.property("buildItemId") == "fixture-phaser"
+        assert manager.builds.get().to_dict() == build
+        assert any(query.get("op") == "get" for query in calls)
+    finally:
+        manager.close(); adapter.close(); shell.close()
