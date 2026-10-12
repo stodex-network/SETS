@@ -221,6 +221,42 @@ def test_catalogue_priority_changes_reenrich_existing_build(app, tmp_path):
         manager.close(); adapter.close(); shell.close()
 
 
+def test_captain_unknown_elite_and_owned_skill_unlocks_render_read_only(app, tmp_path):
+    from PySide6.QtCore import Qt
+    build = fixture_build()
+    build["data"]["captain"].update(career="Science", faction="Federation", species="Joined Trill", primary_spec="Miracle Worker", secondary_spec="Strategist")
+    build["data"]["skill_unlocks"] = {"space": {"eng": [[True, False], [False, True], [None, None], [False, False], [True, False, True, False]]},
+                                       "ground": [[False, True], [False, False], [None, None], [False, False], [True, False]]}
+    shell, manager, adapter = make_host(tmp_path, build=build)
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        controller = page.sets_controller
+        assert controller.build.character.elite.checkState() == Qt.CheckState.PartiallyChecked
+        assert controller.build.character.species.currentText() == "Joined Trill"
+        assert controller.build.character.primary.currentText() == "Miracle Worker"
+        eng = controller.build.skills.unlocks["eng"]
+        assert "Hangar Health" in eng[0].tooltip and "Subsystem Repair" in eng[1].tooltip
+        assert eng[2].property("buildSkillUnlockState") == "unknown"
+        assert eng[3].property("buildSkillUnlockState") == "unowned"
+        assert "Ablative Corruption" in eng[4].tooltip
+        assert "Device Expertise" in controller.build.skills.unlocks["ground"][0].tooltip
+        assert manager.builds.get().to_dict() == build
+        assert not manager.packages["network.stodex.sets"].error
+    finally:
+        manager.close(); adapter.close(); shell.close()
+
+
+def test_native_skill_layout_covers_every_sets_node_without_icon_identity():
+    spec = importlib.util.spec_from_file_location("_test_captain_layout", Path(__file__).parent / "companion_pack/captain_layout.py")
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    layout = module.skill_layout()
+    keys = [item["id"] for nodes in layout["space"].values() for item in nodes] + [item["id"] for nodes in layout["ground"] for item in nodes]
+    assert len(keys) == len(set(keys)) == 110
+    assert layout["space"]["eng"][0]["id"] == "Player_Skills_Space.Engineering_T1.Hull_Healing_1"
+    assert layout["ground"][1][2]["id"] == "Player_Skills_Ground.Ground_Skills_C2.Armor_1"
+
+
 def test_late_catalogue_response_cannot_replace_new_build_or_disabled_view(app, tmp_path):
     started, release = threading.Event(), threading.Event()
     class DelayedCatalogue:

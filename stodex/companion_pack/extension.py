@@ -2,10 +2,10 @@
 """Read-only SETS page using Companion builds and HOGG resources."""
 import importlib.util
 import sys
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from .build_view import BuildRenderer
+from .captain_layout import skill_layout
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
@@ -125,15 +125,7 @@ class Extension:
         if not context.game.capability("captain.build.get").get("available"):
             page.build_status.setText("Current Captain read unavailable: connect to Bridge 0.2.5 or later")
             return
-        root = Path(__file__).resolve().parents[2]
-        space = json.loads((root / "local/space_skills.json").read_text(encoding="utf-8"))["space"]
-        ground = json.loads((root / "local/ground_skills.json").read_text(encoding="utf-8"))["ground"]
-        layout = {"space": {career: [] for career in ("eng", "sci", "tac")}, "ground": [[] for _ in range(4)]}
-        for tier in space:
-            for group in tier:
-                layout["space"][group["career"]].extend(node["image"] for node in group["nodes"])
-        for group in ground:
-            layout["ground"][group["tree"]].extend(node["image"] for node in group["nodes"])
+        layout = skill_layout()
         page.read_current_captain.setEnabled(False)
         page.build_status.setText("Reading current Captain…")
         captain_before = context.state.get("captain")

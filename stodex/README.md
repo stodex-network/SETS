@@ -38,6 +38,8 @@ Publish via `context.builds.publish(snapshot)` on the GUI thread, or explicitly 
 
 ## Current Captain reads
 
+Version 0.6 adds typed Ground Captain career/origin/species and Elite Captain status, assigned primary/secondary specializations, selected trait categories, and native Skills/Skill Unlock ownership from Bridge 0.2.7. Skills use exact Player_Skills node identities in `companion_pack/captain_layout.py`, covering all 110 buttons independently of SETS icon names. Skill Unlock arrows and ultimate enhancements display observed ownership; missing and conflicting choices remain explicit. Unknown Elite status is indeterminate. Current alignment remains separate from the Faction selector's origin/species meaning. Native trait assignments preserve native slot indices, and descriptions/icons use the existing independent datasource contracts. Ground representation and loaded definition Messages are required for Captain species; a Space ship skeleton never supplies it. Officer training/seating and build application remain deferred.
+
 Version 0.3 adds **Read current Captain** to the embedded Build page. Connect Companion to an admitted Bridge 0.2.5 session and click the button to request one copied build. Ground/Space equipment and uniquely mapped Skills populate the existing read-only view; native trait slots and specialization IDs remain available in the retained observation, with their unvalidated display mappings explicit. The page does not poll or query public Info. Older/disconnected Bridges report the unavailable capability. [The Bridge API contract](../../../experiments/sto-reshade-bridge/protocol/captain-build.md) lists acquisition and display limits.
 
 ## Catalogue descriptions

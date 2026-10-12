@@ -71,7 +71,13 @@ class BuildRenderer:
             data = snapshot.observation.data
         captain, ship = data.get("captain", {}), data.get("ship", {})
         controller.build.character.name.setText(captain.get("name", ""))
-        controller.build.character.elite.setChecked(captain.get("elite", False))
+        elite = controller.build.character.elite
+        elite.blockSignals(True)
+        elite.setTristate(True)
+        state = captain.get("elite")
+        elite.setCheckState(Qt.CheckState.Checked if state is True else Qt.CheckState.Unchecked if state is False else Qt.CheckState.PartiallyChecked)
+        elite.setToolTip("Elite Captain" if state is not None else "Elite Captain status not observed")
+        elite.blockSignals(False)
         for field, widget in (("career", "career"), ("faction", "faction"), ("species", "species"),
                               ("primary_spec", "primary"), ("secondary_spec", "secondary")):
             combo = getattr(controller.build.character, widget)
@@ -171,14 +177,16 @@ class BuildRenderer:
             for button, state in zip(buttons, nodes):
                 button.set_overlay(controller.images.overlays.check if state is True else QImage())
                 button.setProperty("buildSkillState", "unknown" if state is None else "owned" if state else "unowned")
-                button.setToolTip(button.tooltip + "<br>" + ("Not observed" if state is None else "Owned" if state else "Not owned"))
+                self.skill_tooltip(button, state)
         for buttons, nodes in zip(controller.build.skills.ground, skills.get("ground", [[None] * 6, [None] * 6, [None] * 4, [None] * 4])):
             for button, state in zip(buttons, nodes):
                 button.set_overlay(controller.images.overlays.check if state is True else QImage())
                 button.setProperty("buildSkillState", "unknown" if state is None else "owned" if state else "unowned")
+                self.skill_tooltip(button, state)
         ground_nodes = [node for group in skills.get("ground", [[None] * 20]) for node in group]
         controller.build.skills.count_labels["ground"].setText(
             f"{sum(node is True for node in ground_nodes)} owned · {sum(node is None for node in ground_nodes)} unknown")
+        self.show_skill_unlocks(data)
         if snapshot is None:
             page.build_status.setText("SETS build viewer · No player build loaded")
             self.summary = page.build_status.text()
@@ -250,6 +258,57 @@ class BuildRenderer:
 
     def show_status(self):
         self.page.build_status.setText(" · ".join(filter(None, (self.summary, self.icon_status, self.catalogue_status))))
+
+    @staticmethod
+    def skill_tooltip(button, state):
+        original = button.property("buildSkillBaseTooltip")
+        if original is None:
+            original = button.tooltip
+            button.setProperty("buildSkillBaseTooltip", original)
+        button.tooltip = original + "<br>" + ("Not observed" if state is None else "Owned" if state else "Not owned")
+        button.setToolTip(button.tooltip)
+
+    def show_skill_unlocks(self, data):
+        controller = self.page.sets_controller
+        skills, unlocks = data.get("skills", {}), data.get("skill_unlocks", {})
+        for career, buttons in controller.build.skills.unlocks.items():
+            environment = "ground" if career == "ground" else "space"
+            observed = unlocks.get("ground", ()) if environment == "ground" else unlocks.get("space", {}).get(career, ())
+            definitions = controller.build._cache.skills.get(environment + "_unlocks", {})
+            if environment == "space":
+                definitions = definitions.get(career, ())
+            for i, button in enumerate(buttons):
+                button.clear()
+                choices = observed[i] if i < len(observed) else ()
+                known = bool(choices) and all(c is not None for c in choices)
+                selected = [j for j, c in enumerate(choices) if c is True]
+                state = "unknown" if not known else "owned" if selected else "unowned"
+                if known and len(choices) == 2 and len(selected) > 1:
+                    state = "ambiguous"
+                button.setProperty("buildSkillUnlockState", state)
+                button.tooltip = {"unknown": "Skill Unlock not observed", "unowned": "Skill Unlock not owned",
+                                  "ambiguous": "Both Skill Unlock choices are owned"}.get(state, "")
+                if state == "owned" and i < len(definitions):
+                    definition = definitions[i]
+                    if len(choices) == 2:
+                        detail = definition["nodes"][selected[0]]
+                        button.set_item(controller.images.get("arrow-up" if selected[0] == 0 else "arrow-down"))
+                        button.tooltip = f"<p>{html.escape(detail['name'])}</p><p>{detail['desc']}</p>"
+                    else:
+                        button.set_item(controller.images.get(definition["name"]))
+                        names = [definition["name"] if j == 0 else definition["options"][j - 1]["name"] for j in selected]
+                        button.tooltip = "<br>".join(html.escape(name) for name in names)
+                button.setToolTip(button.tooltip)
+            nodes = skills.get("ground", ()) if environment == "ground" else (skills.get("space", {}).get(career, ()),)
+            nodes = [node for group in nodes for node in group]
+            total = sum(node is True for node in nodes)
+            complete = bool(nodes) and all(node is not None for node in nodes)
+            for index, segment in enumerate(controller.build.skills.bonus_bars[career]):
+                segment.blockSignals(True)
+                segment.setChecked(index < total)
+                segment.setProperty("buildSkillState", "owned" if index < total else "unowned" if complete else "unknown")
+                segment.setToolTip("Owned Skill points" if index < total else "Not owned" if complete else "Skill points not fully observed")
+                segment.blockSignals(False)
 
     def load_catalogue(self, targets):
         if not targets:
