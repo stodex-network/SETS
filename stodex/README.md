@@ -1,4 +1,4 @@
-# SETS in STOdex Companion
+# SETS in STOdex
 
 This opt-in extension wraps the existing SETS space, ground and skill layouts as a read-only Companion Build page. It receives immutable version-1 player builds through `context.builds`, populates supplied item/trait/officer slots, renders known skill ownership, and loads item/ship icons through Companion's shared HOGG resources. Version 0.4 resolves copied equipment icon tokens against the installed texture archives. It uses the host's QApplication and scopes its theme to the view. Live acquisition is explicit through **Read current Captain**; it starts no wiki catalogue downloads and never loads or writes a standalone SETS autosave.
 
@@ -7,9 +7,9 @@ The fork's `stodex-extension` branch retains upstream standalone metadata and st
 From the SETS repository root on `stodex-extension`, after installing the sibling Companion checkout:
 
 ```powershell
-../stodex-companion/.venv/Scripts/python -m pip install -r stodex/requirements-companion.txt
-../stodex-companion/.venv/Scripts/python -m stodex_companion --mock --extension-dir stodex
-../stodex-companion/.venv/Scripts/python -m stodex_companion --mock --extension-dir stodex --build-file stodex/build-fixture.json
+../stodex-app/.venv/Scripts/python -m pip install -r stodex/requirements-companion.txt
+../stodex-app/.venv/Scripts/python -m stodex_companion --mock --extension-dir stodex
+../stodex-app/.venv/Scripts/python -m stodex_companion --mock --extension-dir stodex --build-file stodex/build-fixture.json
 ```
 
 Select Build in Companion. All four view buttons remain usable; the unchanged wide layout is accessible through horizontal and vertical scrolling. The supplied fixture is explicitly authored demonstration data and includes a synthetic icon path for the HOGG test fixture, so its item will retain a text placeholder against an ordinary installation. To review real images, supply exact archive/member references from the installed-game resource inventory. Missing icons or missing HOGG configuration leave item names/native IDs visible with explicit errors.
@@ -17,7 +17,7 @@ Select Build in Companion. All four view buttons remain usable; the unchanged wi
 For a heavily populated interactive demonstration using installed-game icons, run the showcase from this repository root:
 
 ```powershell
-../stodex-companion/.venv/Scripts/python stodex/showcase.py --output results/sets-showcase
+../stodex-app/.venv/Scripts/python stodex/showcase.py --output results/sets-showcase
 ```
 
 The showcase inventories item-icon WTEX members through the shared HOGG helper, fills space/ground display slots with distinct representative resources and records the actual helper PID, decoded icon results, source fingerprints and three fresh-read SHA-256 comparisons. It saves the supplied JSON build, space/ground screenshots and a verification receipt in the output directory. `--archive-root <piggs>` overrides installed-game discovery. This is an icon/rendering demonstration: names derive from resource filenames, categories are illustrative, and it does not claim real equipped items, legal build combinations or native item-definition joins.
@@ -25,15 +25,15 @@ The showcase inventories item-icon WTEX members through the shared HOGG helper, 
 Run the integration check with Companion installed and the requirements above available:
 
 ```powershell
-../stodex-companion/.venv/Scripts/python -m pytest stodex/test_companion.py ../stodex-companion/tests/test_extensions.py -q
+../stodex-app/.venv/Scripts/python -m pytest stodex/test_companion.py ../stodex-app/tests/test_extensions.py -q
 $env:QT_SCALE_FACTOR = '1.5'
-../stodex-companion/.venv/Scripts/python -m pytest stodex/test_companion.py -q
+../stodex-app/.venv/Scripts/python -m pytest stodex/test_companion.py -q
 Remove-Item Env:QT_SCALE_FACTOR
 ```
 
 The tests deny wiki network IO, exercise actual extension lifecycle and all four tabs, check host ownership and read-only controls, and read a compressed WTEX through the real C# HOGG helper into the displayed item. They also cover retained builds, native item identity, deduplicated icons, missing images, escaped metadata, replacement snapshots and late completion suppression. Screenshots of populated space/ground views are saved in temporary test directories. These are supplied-build checks, not live inventory acceptance or comprehensive upstream editor regressions.
 
-Publish via `context.builds.publish(snapshot)` on the GUI thread, or explicitly supply JSON through `--build-file`. See the host repository's `../stodex-companion/BUILDS.md` for the envelope, slot capacities/states, skills, revision/session rules and HOGG icon response contract. The renderer projects copied identities and metadata directly into SETS widgets and retains the immutable source observation separately; no SETS catalogue-name cleanup runs. The current-Captain publisher owns acquisition and native slot/rank mapping; the shared resources provider owns icon-token resolution. Upstream `src/` is unchanged by this extension update.
+Publish via `context.builds.publish(snapshot)` on the GUI thread, or explicitly supply JSON through `--build-file`. See the host repository's `../stodex-app/BUILDS.md` for the envelope, slot capacities/states, skills, revision/session rules and HOGG icon response contract. The renderer projects copied identities and metadata directly into SETS widgets and retains the immutable source observation separately; no SETS catalogue-name cleanup runs. The current-Captain publisher owns acquisition and native slot/rank mapping; the shared resources provider owns icon-token resolution. Upstream `src/` is unchanged by this extension update.
 
 ## Current Captain reads
 

@@ -155,7 +155,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parent / 'stodex-companion/tests/test_resources.py')
+        root.parent / 'stodex-app/tests/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -214,7 +214,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parent / "stodex-companion/tests/test_resources.py"
+    test_path = root.parent / "stodex-app/tests/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)

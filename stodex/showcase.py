@@ -40,7 +40,7 @@ def run():
     evidence = QLabel("HOGG: reading installed icon inventory…")
     evidence.setWordWrap(True)
     page.layout().insertWidget(0, evidence)
-    shell.setWindowTitle("STOdex Companion — HOGG Icon Showcase")
+    shell.setWindowTitle("STOdex — HOGG Icon Showcase")
     shell.showMaximized()
     shell.raise_()
     shell.activateWindow()
