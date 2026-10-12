@@ -144,7 +144,9 @@ class BuildRenderer:
                     button.setVisible(state != "unavailable")
                     text = tooltip(slot)
                     button.tooltip = text
-                    button.setToolTip(text)
+                    # ItemButton owns the SETS hover window; Qt's delayed tooltip
+                    # would display the same content a second time.
+                    button.setToolTip("")
                     button.setProperty("buildSlotState", state)
                     button.setProperty("buildItemId", "")
                     if state == "occupied":
@@ -242,7 +244,8 @@ class BuildRenderer:
                         text = "<br>Icon unavailable: " + html.escape(reason)
                         if hasattr(button, "tooltip"):
                             button.tooltip += text
-                        button.setToolTip(button.toolTip() + text)
+                        else:
+                            button.setToolTip(button.toolTip() + text)
                 else:
                     for button in targets[key]:
                         if hasattr(button, "set_item"):
@@ -266,7 +269,7 @@ class BuildRenderer:
             original = button.tooltip
             button.setProperty("buildSkillBaseTooltip", original)
         button.tooltip = original + "<br>" + ("Not observed" if state is None else "Owned" if state else "Not owned")
-        button.setToolTip(button.tooltip)
+        button.setToolTip("")
 
     def show_skill_unlocks(self, data):
         controller = self.page.sets_controller
@@ -298,7 +301,7 @@ class BuildRenderer:
                         button.set_item(controller.images.get(definition["name"]))
                         names = [definition["name"] if j == 0 else definition["options"][j - 1]["name"] for j in selected]
                         button.tooltip = "<br>".join(html.escape(name) for name in names)
-                button.setToolTip(button.tooltip)
+                button.setToolTip("")
             nodes = skills.get("ground", ()) if environment == "ground" else (skills.get("space", {}).get(career, ()),)
             nodes = [node for group in nodes for node in group]
             total = sum(node is True for node in nodes)
@@ -354,7 +357,6 @@ class BuildRenderer:
                         if id(button) in self.icon_errors:
                             text += "<br>Icon unavailable: " + html.escape(self.icon_errors[id(button)])
                         button.tooltip = text
-                        button.setToolTip(text)
             self.catalogue_status = f"{loaded} descriptions loaded · {len(targets) - loaded} unmatched · {source}"
             self.show_status()
         self.catalogue_status = "Loading catalogue descriptions…"

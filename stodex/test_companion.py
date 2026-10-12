@@ -12,9 +12,10 @@ import struct
 import threading
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QThread
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QThread
+from PySide6.QtGui import QCursor, QEnterEvent, QHelpEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QPushButton, QToolTip
 from stodex_companion.__main__ import create_host
 from stodex_companion.providers.resources import DEFAULT_HELPER, ResourcesProvider
 from stodex_companion.storage import Data
@@ -156,6 +157,36 @@ def make_host(tmp_path, resources=None, build=None, catalogue=None):
     return result
 
 
+@pytest.mark.parametrize("target", ["equipment", "unknown-slot", "skill", "skill-unlock"])
+def test_hover_shows_only_sets_tooltip(app, tmp_path, target):
+    shell, manager, adapter = make_host(tmp_path, build=fixture_build())
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        controller = page.sets_controller
+        targets = {"equipment": (0, controller.build.space.fore_weapons[0]),
+                   "unknown-slot": (0, controller.build.space.fore_weapons[2]),
+                   "skill": (2, controller.build.skills.space["eng"][0]),
+                   "skill-unlock": (2, controller.build.skills.unlocks["eng"][0])}
+        tab, button = targets[target]
+        controller.tabbers.switch(tab)
+        shell.resize(2200, 1100)
+        shell.show()
+        app.processEvents()
+        assert button.tooltip
+        pointer = button.mapToGlobal(button.rect().center())
+        QCursor.setPos(pointer)
+        button.enterEvent(QEnterEvent(QPointF(button.rect().center()), QPointF(button.rect().center()), QPointF(pointer)))
+        assert button._tooltip_frame.isVisible()
+        QToolTip.hideText()
+        app.sendEvent(button, QHelpEvent(QEvent.Type.ToolTip, button.rect().center(), pointer))
+        assert not QToolTip.isVisible(), "Qt displayed a second tooltip beside the SETS tooltip"
+        assert button._tooltip_frame.isVisible()
+    finally:
+        QToolTip.hideText()
+        manager.close(); adapter.close(); shell.close()
+
+
 def test_catalogue_provider_is_interchangeable_and_uses_upstream_tooltip(app, tmp_path):
     class Catalogue:
         def __init__(self):
@@ -183,6 +214,7 @@ def test_catalogue_provider_is_interchangeable_and_uses_upstream_tooltip(app, tm
         assert "Phaser Beam Array" in button.tooltip and "Catalogue name" not in button.tooltip
         assert "Common Ship Weapon" not in button.tooltip
         assert "color:" in button.tooltip and "Mk XV" in button.tooltip
+        assert button.toolTip() == ""
         assert button.property("buildItemId") == "fixture-phaser"
         assert all(thread is not app.thread() for thread in catalogue.threads)
         assert catalogue.queries[0]["items"][0]["id"] == "fixture-phaser"
@@ -357,11 +389,13 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
             button, missing = page.sets_controller.build.space.fore_weapons[:2]
             assert button._base.pixelColor(0, 0).getRgb() == (180, 80, 25, 255)
             assert button._overlay == page.sets_controller.images.overlays.epic
-            assert 'Epic' in button.toolTip()
+            assert 'Epic' in button.tooltip
+            assert button.toolTip() == ''
             assert button.property('buildItemId') == item['id']
             assert page.build_renderer.icon_results[('token', 'phaser')]['resolution']['member'] == member
             assert missing.property('buildItemId') == 'missing'
-            assert 'Icon unavailable' in missing.toolTip()
+            assert 'Icon unavailable' in missing.tooltip
+            assert missing.toolTip() == ''
             assert '1 unavailable' in page.build_status.text()
             replacement = deepcopy(value)
             replacement['revision'] += 1
@@ -369,7 +403,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
             assert manager.builds.publish(replacement)
             wait_for(lambda: '1 icons loaded' in page.build_status.text())
             assert button._overlay == page.sets_controller.images.overlays.rare
-            assert 'Rare' in button.toolTip() and 'Epic' not in button.toolTip()
+            assert 'Rare' in button.tooltip and 'Epic' not in button.tooltip
             replacement['revision'] += 1
             del replacement['data']['slots']['space']['fore_weapons'][0]['item']['rarity']
             assert manager.builds.publish(replacement)
@@ -448,7 +482,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
             assert page.sets_controller.tabbers.build_tabber.currentIndex() == 0
             assert button.property("buildItemId") == "unresolved.native.item"
             assert "&lt;Unknown &amp; Item&gt;" in button.tooltip
-            assert "Icon unavailable" in button.toolTip()
+            assert "Icon unavailable" in button.tooltip
             assert not manager.packages[key[0]].error
             manager.deactivate(key[0])
             with pytest.raises(RuntimeError, match="activation ended"):
