@@ -128,10 +128,17 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
         captain = manager.state.get("captain")
         value["data"]["active_entity_id"] = captain.data.get("captain_id") or value["data"]["active_entity_id"]
         value["data"]["captain_id"] = captain.data.get("captain_id") or value["data"]["captain_id"]
+        value["data"]["equipment"]["captain"].append({"bag_id": 80, "bag_name": "Doff_Active_Space",
+            "slots": [{"index": 0, "state": "occupied", "item": {"instance_id": "88001",
+                "definition_key": "Native_Doff", "display_name": "Observed Duty Officer", "count": 1}},
+                {"index": 1, "state": "empty"}]})
         pending[0].finish("succeeded", value)
         wait_for(lambda: manager.builds.get() is not None)
         assert page.read_current_captain.isEnabled()
         assert page.sets_controller.build.ground.armor[0].property("buildItemId") == "Native_Armor"
+        assert page.sets_controller.build.space.doffs_spec[0].currentText() == "Observed Duty Officer"
+        assert page.sets_controller.build.space.doffs_spec[1].currentText() == "empty"
+        assert manager.data.query("captain", {"op": "get", "path": ["duty-officers", "88001", "assignment"]})["data"]["value"]["environment"] == "space"
         retained = manager.builds.get()
         assert retained.observation.data["native"]["traits"]["primary"]["slots"][0]["power_id"] == 7
         page.read_current_captain.click()
