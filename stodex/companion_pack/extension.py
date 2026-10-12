@@ -2,16 +2,17 @@
 """Read-only SETS page using Companion builds and HOGG resources."""
 import importlib.util
 import sys
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from .build_view import BuildRenderer
+from .captain_layout import skill_layout
+from .game_art import GameArt, prepare_images
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QFontDatabase, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QLabel, QLineEdit, QPlainTextEdit,
-    QPushButton, QScrollArea, QSlider, QVBoxLayout, QHBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
 )
 
 
@@ -39,6 +40,18 @@ def create_view(root, storage):
     sets_class = load_sets(root)
 
     class HostedSETS(sets_class):
+        def cache_icons(self):
+            load_icon = sys.modules["stodex_sets_upstream.iofunc"].load_icon
+            for name, filename in {"copy": "copy.png", "paste": "paste.png", "clear": "clear.png",
+                                   "edit": "edit.png", "link": "external_link.png", "info": "info.svg"}.items():
+                self.theme.icons[name] = load_icon(filename, root)
+            self.theme.icons["STOCD"] = load_icon("stocd.png", root,
+                (self.theme.opt.box_height, self.theme.opt.box_width * 182 / 106))
+            for name in ("ground", "eng", "sci", "tac", "dual_cannons"):
+                self.theme.icons[name] = QPixmap()
+            for name in ("sci-small", "tac-small"):
+                self.images.icons[name] = QPixmap()
+
         def create_main_window(self, argv=None):
             app = QApplication.instance()
             if app is None:
@@ -55,7 +68,7 @@ def create_view(root, storage):
     # Observed builds are read-only; widget callbacks must never persist a projection.
     controller.build.autosave = lambda: None
     # Only bundled static definitions and local images; no Cargo or download workers.
-    controller.images.load_base_images()
+    prepare_images(controller.images, root)
     controller.init_ui()
     controller.build.load_build()
     controller.splash.show_splash(False)
@@ -75,15 +88,31 @@ def create_view(root, storage):
     page = QWidget()
     page.setObjectName("sets-build-viewer")
     layout = QVBoxLayout(page)
-    label = QLabel("SETS build preview · No live player build loaded")
+    label = QLabel("SETS build preview · No live player build loaded", page)
     label.setTextFormat(Qt.TextFormat.PlainText)
     label.setWordWrap(True)
-    header = QHBoxLayout()
-    header.addWidget(label, 1)
-    refresh = QPushButton("Read current Captain")
+    label.hide()
+    refresh = sys.modules["stodex_sets_upstream.widgetbuilder"].create_button2(controller.theme, "Read current Captain")
     refresh.setObjectName("sets-read-current-captain")
-    header.addWidget(refresh)
-    layout.addLayout(header)
+    refresh.setToolTip("Read your Captain from the connected STO session")
+    # Reuse the upstream toolbar's occupied slot instead of adding a header row.
+    save = next(button for button in controller.window.findChildren(QPushButton) if button.text() == "Clear Current Tab")
+    toolbar = save.parentWidget().layout()
+    def replace_button(layout):
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item.widget() is save:
+                layout.insertWidget(i, refresh)
+                for j in range(layout.count()):
+                    button = layout.itemAt(j).widget()
+                    if button and button is not refresh:
+                        button.hide()
+                return True
+            if item.layout() and replace_button(item.layout()):
+                return True
+        return False
+    if not replace_button(toolbar):
+        raise RuntimeError("SETS build toolbar was not found")
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setWidget(controller.window)
@@ -103,6 +132,7 @@ class Extension:
         self.pending_read = None
         context.ui.register_page("build", "Build", self.page)
         context.builds.subscribe(self.changed)
+        context.data.subscribe("catalog", lambda _: self.changed(context.builds.get()))
 
     def changed(self, snapshot):
         if self.view is not None:
@@ -113,6 +143,8 @@ class Extension:
         self.view = create_view(root, self.context.storage.path.parent / "sets-preview")
         self.view.build_renderer = BuildRenderer(self.view, self.context)
         self.view.build_renderer.update(self.context.builds.get())
+        self.view.game_art = GameArt(self.view, self.context)
+        self.view.game_art.load()
         self.context.ui.connect(self.view.read_current_captain.clicked, self.read_current)
         return self.view
 
@@ -122,18 +154,11 @@ class Extension:
         from stodex_companion.build_projection import from_bridge
         context, page = self.context, self.view
         if not context.game.capability("captain.build.get").get("available"):
-            page.build_status.setText("Current Captain read unavailable: connect to Bridge 0.2.5 or later")
+            self.read_failed("Current Captain read unavailable: connect to Bridge 0.2.5 or later")
             return
-        root = Path(__file__).resolve().parents[2]
-        space = json.loads((root / "local/space_skills.json").read_text(encoding="utf-8"))["space"]
-        ground = json.loads((root / "local/ground_skills.json").read_text(encoding="utf-8"))["ground"]
-        layout = {"space": {career: [] for career in ("eng", "sci", "tac")}, "ground": [[] for _ in range(4)]}
-        for tier in space:
-            for group in tier:
-                layout["space"][group["career"]].extend(node["image"] for node in group["nodes"])
-        for group in ground:
-            layout["ground"][group["tree"]].extend(node["image"] for node in group["nodes"])
+        layout = skill_layout()
         page.read_current_captain.setEnabled(False)
+        page.read_current_captain.setText("Reading Captain…")
         page.build_status.setText("Reading current Captain…")
         captain_before = context.state.get("captain")
         actor_before = captain_before.data.get("captain_id") if captain_before else None
@@ -141,25 +166,34 @@ class Extension:
         def completed(result):
             self.pending_read = None
             page.read_current_captain.setEnabled(True)
+            page.read_current_captain.setText("Read current Captain")
+            page.read_current_captain.setToolTip("Read your Captain from the connected STO session")
             if result.status != "succeeded":
-                page.build_status.setText("Captain read failed: " + str((result.error or {}).get("code", result.status)))
+                self.read_failed("Captain read failed: " + str((result.error or {}).get("code", result.status)))
                 return
             try:
                 current = context.state.get("captain")
                 actor_now = current.data.get("captain_id") if current else None
                 if actor_before != actor_now or (actor_now is not None and result.data["data"].get("active_entity_id") != actor_now):
-                    page.build_status.setText("Captain read discarded: active Captain changed")
+                    self.read_failed("Captain read discarded: active Captain changed")
                     return
                 snapshot = from_bridge(result.data, layout)
                 if not context.builds.publish(snapshot):
-                    page.build_status.setText("Captain read discarded: session/scene changed or an older copy arrived")
+                    self.read_failed("Captain read discarded: session/scene changed or an older copy arrived")
             except (ValueError, TypeError, KeyError) as error:
-                page.build_status.setText("Captain read unavailable: " + str(error))
+                self.read_failed("Captain read unavailable: " + str(error))
         self.pending_read.then(completed)
+
+    def read_failed(self, message):
+        self.view.build_status.setText(message)
+        self.view.read_current_captain.setText("Retry Captain read")
+        self.view.read_current_captain.setToolTip(message)
+        self.context.log.info(message)
 
     def deactivate(self):
         if self.view is not None:
             self.view.build_renderer.close()
+            self.view.game_art.close()
         self.view = None
         self.pending_read = None
         self.context = None

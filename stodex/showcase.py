@@ -100,7 +100,7 @@ def run():
                     entries.append({"state": "occupied", "item": {
                         "id": "fixture:" + member, "name": Path(member).stem.replace("_", " "),
                         "rarity": ["Very Rare", "Ultra Rare", "Epic"][index % 3], "mark": "Mk XV",
-                        "description": "Icon showcase only; not observed equipped inventory or a catalogue join",
+                        "description": "Icon showcase only; not observed equipped inventory or a catalog join",
                         "icon": {"archive": "texture.hogg", "member": member},
                     }})
                 slots[environment][category] = entries
