@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
 from stodex_companion.sdk.builds import BUILD_SLOTS
 from .catalogue_view import catalogue_tooltip
+from .captain_layout import skill_layout
 
 
 def placeholder(text):
@@ -172,16 +173,32 @@ class BuildRenderer:
                         unknown += 1
                         button.set_item(placeholder("?"))
         skills = data.get("skills", {})
+        layout = skill_layout()
+        definitions = {}
+        for tree in data.get("native", {}).get("skills", {}).get("trees", ()):
+            for definition in tree.get("definitions", ()):
+                key = definition.get("definition_key")
+                if key:
+                    # Repeated identities are ambiguous even if their images agree.
+                    definitions[key] = None if key in definitions else definition
+        def skill_icon(button, selector):
+            # Reset the previous observation's image before asynchronous delivery.
+            button.set_item(QImage())
+            definition = definitions.get(selector["id"])
+            if definition and definition.get("icon_token"):
+                targets.setdefault(("token", definition["icon_token"]), []).append(button)
         for career, buttons in controller.build.skills.space.items():
             nodes = skills.get("space", {}).get(career, [None] * len(buttons))
             controller.build.skills.count_labels[career].setText(
                 f"{sum(node is True for node in nodes)} owned · {sum(node is None for node in nodes)} unknown")
-            for button, state in zip(buttons, nodes):
+            for button, state, selector in zip(buttons, nodes, layout["space"][career]):
+                skill_icon(button, selector)
                 button.set_overlay(controller.images.overlays.check if state is True else QImage())
                 button.setProperty("buildSkillState", "unknown" if state is None else "owned" if state else "unowned")
                 self.skill_tooltip(button, state)
-        for buttons, nodes in zip(controller.build.skills.ground, skills.get("ground", [[None] * 6, [None] * 6, [None] * 4, [None] * 4])):
-            for button, state in zip(buttons, nodes):
+        for buttons, nodes, selectors in zip(controller.build.skills.ground, skills.get("ground", [[None] * 6, [None] * 6, [None] * 4, [None] * 4]), layout["ground"]):
+            for button, state, selector in zip(buttons, nodes, selectors):
+                skill_icon(button, selector)
                 button.set_overlay(controller.images.overlays.check if state is True else QImage())
                 button.setProperty("buildSkillState", "unknown" if state is None else "owned" if state else "unowned")
                 self.skill_tooltip(button, state)
@@ -261,6 +278,23 @@ class BuildRenderer:
 
     def show_status(self):
         self.page.build_status.setText(" · ".join(filter(None, (self.summary, self.icon_status, self.catalogue_status))))
+        self.context.log.info(self.page.build_status.text())
+
+    def refresh_rarity(self):
+        if self.snapshot is None:
+            return
+        controller = self.page.sets_controller
+        for environment, categories in self.snapshot.observation.data.get("slots", {}).items():
+            for category, slots in categories.items():
+                if category in {"doffs", "boffs"}:
+                    continue
+                buttons = getattr(getattr(controller.build, environment), category)
+                for button, slot in zip(buttons, slots):
+                    if slot["state"] == "occupied":
+                        rarity = slot["item"].get("rarity", "").lower().replace(" ", "")
+                        overlay = getattr(controller.images.overlays, rarity, None)
+                        if overlay is not None:
+                            button.set_overlay(overlay)
 
     @staticmethod
     def skill_tooltip(button, state):

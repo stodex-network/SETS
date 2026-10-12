@@ -52,6 +52,7 @@ def test_host_lifecycle_and_offline_view(app, tmp_path, monkeypatch):
             shell.resize(1280, 800)
             shell.show()
             app.processEvents()
+            assert page.read_current_captain.isVisible()
             if _ == 0:
                 shell.grab().save(str(tmp_path / "sets-companion-preview.png"))
             assert QApplication.instance() is app
@@ -66,7 +67,8 @@ def test_host_lifecycle_and_offline_view(app, tmp_path, monkeypatch):
                 button.click()
                 assert controller.tabbers.build_tabber.currentIndex() == index
             assert all(not b.isEnabled() for b in buttons if b.text() not in {
-                "SPACE", "GROUND", "SPACE SKILLS", "GROUND SKILLS"})
+                "SPACE", "GROUND", "SPACE SKILLS", "GROUND SKILLS", "Read current Captain"})
+            assert page.build_status.isHidden() and shell.status.isHidden()
             manager.deactivate(key[0])
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             assert key not in shell.pages
@@ -127,9 +129,16 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
         assert retained.observation.data["native"]["traits"]["primary"]["slots"][0]["power_id"] == 7
         page.read_current_captain.click()
         assert len(pending) == 2
+        pending[1].finish("rejected", error={"code": "fixture_read_failure"})
+        assert page.read_current_captain.isEnabled()
+        assert page.read_current_captain.text() == "Retry Captain read"
+        assert "fixture_read_failure" in page.read_current_captain.toolTip()
+        assert page.build_status.isHidden() and manager.builds.get() is retained
+        page.read_current_captain.click()
+        assert len(pending) == 3
         manager.deactivate(key[0])
         value["revision"] = 2
-        pending[1].finish("succeeded", value)
+        pending[2].finish("succeeded", value)
         QTest.qWait(50)
         assert manager.builds.get() is retained
     finally:
@@ -220,6 +229,56 @@ def test_catalogue_provider_is_interchangeable_and_uses_upstream_tooltip(app, tm
         assert catalogue.queries[0]["items"][0]["id"] == "fixture-phaser"
         assert manager.builds.get().to_dict() == build
         assert "stodex-fixture" in page.build_status.text()
+    finally:
+        manager.close(); adapter.close(); shell.close()
+
+
+def test_native_skill_icons_use_resources_without_wiki_downloads(app, tmp_path, monkeypatch):
+    from PIL import Image
+    import requests
+    monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Skills icon requested from wiki"))
+    images = {}
+    for token, color in [("Space_Hull_Heal", "red"), ("Ground_Damage", "blue")]:
+        buffer = io.BytesIO()
+        Image.new("RGBA", (8, 8), color).save(buffer, format="PNG")
+        png = buffer.getvalue()
+        images[token] = {"availability": "available", "bytes": len(png), "sha256": hashlib.sha256(png).hexdigest(),
+                         "data": base64.b64encode(png).decode()}
+    queries = []
+    def query(arguments):
+        queries.append(arguments)
+        if "token" not in arguments:
+            return {"availability": "unavailable", "reason": "No UI artwork in fixture"}
+        return images[arguments["token"]]
+    build = fixture_build()
+    del build["data"]["slots"]["space"]["fore_weapons"][0]["item"]["icon"]
+    build["data"]["skills"] = {"space": {"eng": [True] + [None] * 29},
+                               "ground": [[False] + [None] * 5, [None] * 6, [None] * 4, [None] * 4]}
+    build["data"]["native"] = {"skills": {"trees": [
+        {"definition_key": "Player_Skills_Space", "definitions": [
+            {"definition_key": "Player_Skills_Space.Engineering_T1.Hull_Healing_1", "icon_token": "Space_Hull_Heal"}]},
+        {"definition_key": "Player_Skills_Ground", "definitions": [
+            {"definition_key": "Player_Skills_Ground.Ground_Skills_C1.Wpn_Dmg_1", "icon_token": "Ground_Damage"}]}]}}
+    shell, manager, adapter = make_host(tmp_path, resources=SimpleNamespace(query=query), build=build)
+    try:
+        shell.select_page(("network.stodex.sets", "build"))
+        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        wait_for(lambda: "2 icons loaded" in page.build_status.text())
+        space = page.sets_controller.build.skills.space["eng"][0]
+        ground = page.sets_controller.build.skills.ground[0][0]
+        assert space._base.pixelColor(0, 0).getRgb() == (255, 0, 0, 255)
+        assert ground._base.pixelColor(0, 0).getRgb() == (0, 0, 255, 255)
+        assert space._overlay == page.sets_controller.images.overlays.check
+        assert ground._overlay.isNull()
+        assert space.property("buildSkillState") == "owned" and ground.property("buildSkillState") == "unowned"
+        assert {q["token"] for q in queries if "token" in q} == set(images)
+        assert manager.builds.get().to_dict() == build
+        # A replacement without icon evidence must not keep the previous images.
+        replacement = deepcopy(build)
+        replacement["revision"] += 1
+        del replacement["data"]["native"]
+        assert manager.builds.publish(replacement)
+        assert space._base.isNull() and ground._base.isNull()
     finally:
         manager.close(); adapter.close(); shell.close()
 
