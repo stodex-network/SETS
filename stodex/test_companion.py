@@ -21,6 +21,12 @@ from stodex_companion.providers.resources import DEFAULT_HELPER, ResourcesProvid
 from stodex_companion.storage import Data
 
 
+@pytest.fixture(autouse=True)
+def isolate_installation_discovery(monkeypatch):
+    # Offline host tests use explicit archive fixtures, independent of installed games.
+    monkeypatch.setattr("stodex_companion.__main__.discover_archive_root", lambda pid=None: None)
+
+
 @pytest.fixture(scope="session")
 def app():
     return QApplication.instance() or QApplication([])
