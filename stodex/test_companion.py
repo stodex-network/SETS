@@ -158,7 +158,7 @@ def fixture_build():
 
 
 def make_host(tmp_path, resources=None, build=None, catalog=None):
-    # Explicit offline catalog fixture; deactivate the shipped network fallback for these tests.
+    # Explicit offline catalog fixture; deactivate independent network sources for these tests.
     providers = {"catalog": catalog or SimpleNamespace(query=lambda _: {"availability": "unavailable", "reason": "Offline fixture"})}
     if resources:
         providers["resources"] = resources
@@ -169,6 +169,7 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
         build_snapshot=build,
     ))
     result[1].deactivate("network.stodex.stowiki-data")
+    result[1].deactivate("network.stodex.sets-data")
     return result
 
 
