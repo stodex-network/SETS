@@ -8,7 +8,7 @@ import threading
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
-from stodex_companion.sdk.builds import BUILD_SLOTS
+from stodex.sdk.builds import BUILD_SLOTS
 from .catalog_view import catalog_tooltip
 from .captain_layout import skill_layout
 

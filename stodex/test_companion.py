@@ -16,15 +16,15 @@ from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QThread
 from PySide6.QtGui import QCursor, QEnterEvent, QHelpEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QToolTip
-from stodex_companion.__main__ import create_host
-from stodex_companion.providers.resources import DEFAULT_HELPER, ResourcesProvider
-from stodex_companion.storage import Data
+from stodex.__main__ import create_host
+from stodex.providers.resources import DEFAULT_HELPER, ResourcesProvider
+from stodex.storage import Data
 
 
 @pytest.fixture(autouse=True)
 def isolate_installation_discovery(monkeypatch):
     # Offline host tests use explicit archive fixtures, independent of installed games.
-    monkeypatch.setattr("stodex_companion.__main__.discover_archive_root", lambda pid=None: None)
+    monkeypatch.setattr("stodex.__main__.discover_archive_root", lambda pid=None: None)
 
 
 @pytest.fixture(scope="session")
@@ -43,7 +43,7 @@ def test_host_lifecycle_and_offline_view(app, tmp_path, monkeypatch):
     priority = QThread.currentThread().priority()
     shell, manager, adapter = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
-        extension_dir=[root / "stodex"],
+        extension_dir=[],
     ))
     key = ("network.stodex.sets", "build")
     theme = app.styleSheet()
@@ -95,8 +95,8 @@ def wait_for(predicate, timeout=5000):
 
 
 def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkeypatch):
-    from stodex_companion.operations import Operation
-    root = Path(__file__).resolve().parents[1].parent / "stodex-bridge-reshade"
+    from stodex.operations import Operation
+    root = Path(__file__).resolve().parents[4] / "stodex-bridge-reshade"
     fixture = root / "results/sto-companion-mvp/bin/captain-build-fixture.json"
     if not fixture.exists():
         pytest.skip("Build the native Captain fixture first")
@@ -172,7 +172,7 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
         providers["resources"] = resources
     result = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
-        extension_dir=[Path(__file__).parent],
+        extension_dir=[],
         data=Data(providers),
         build_snapshot=build,
     ))
@@ -398,7 +398,7 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
     import importlib
     # Load the source extension independently, exactly as the real host does.
     module_name = "_sets_test_wiki_source"
-    source_root = Path(__file__).resolve().parents[2] / "stodex-app/src/stodex_companion/extensions/stowiki_data"
+    source_root = Path(__file__).resolve().parents[2] / "stodex-extension-stowiki-data"
     spec = importlib.util.spec_from_file_location(module_name, source_root / "extension.py", submodule_search_locations=[str(source_root)])
     module = importlib.util.module_from_spec(spec)
     import sys
@@ -423,7 +423,7 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
         cargo.cache_equipment_data()
         for category, entries in cargo.equipment.items():
             assert set(entries) == {record["name"] for record in normalized if category in record["categories"]}
-        renderer = importlib.import_module("_stodex_ext_network_stodex_sets.catalog_view")
+        renderer = importlib.import_module("_stodex_ext_network_stodex_sets.stodex.companion_pack.catalog_view")
         phaser = next(record for record in normalized if record["name"] == "Phaser Beam Array")
         assert renderer.description(phaser["description"], page.sets_controller.theme.tooltips) == cargo.equipment["fore_weapons"]["Phaser Beam Array"]["tooltip"]
     finally:
@@ -435,7 +435,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parent / 'stodex-app/tests/test_resources.py')
+        root.parent.parent / 'tests/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -496,7 +496,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parent / "stodex-app/tests/test_resources.py"
+    test_path = root.parent.parent / "tests/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
