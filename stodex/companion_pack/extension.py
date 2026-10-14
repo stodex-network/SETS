@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Read-only SETS page using Companion builds and HOGG resources."""
+"""Read-only SETS page consuming the Captain catalog and HOGG resources."""
 import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from stodex.sdk.builds import PlayerBuild
+from stodex.sdk import plain
 from .build_view import BuildRenderer
 from .game_art import GameArt, prepare_images
 
@@ -129,19 +131,51 @@ class Extension:
         self.context = context
         self.view = None
         self.pending_read = None
+        self.catalog_snapshot = None
+        self.catalog_pending = False
+        self.catalog_again = False
+        self.rendered_signature = None
         context.ui.register_page("build", "Build", self.page)
         context.builds.subscribe(self.changed)
-        context.data.subscribe("catalog", lambda _: self.changed(context.builds.get()))
+        context.data.subscribe("catalog", lambda _: self.changed(context.builds.get(), force=True))
+        context.data.subscribe("captain", lambda _: self.refresh_catalog())
+        self.refresh_catalog()
 
-    def changed(self, snapshot):
+    def changed(self, snapshot, force=False):
         if self.view is not None:
-            self.view.build_renderer.update(snapshot)
+            selected = self.catalog_snapshot or snapshot
+            signature = None
+            if selected is not None:
+                data = {key: value for key, value in selected.observation.data.items() if key not in {'context_provenance', 'native'}}
+                signature = (selected.kind, plain(data), plain(selected.observation.missing_fields))
+            if force or signature != self.rendered_signature:
+                self.view.build_renderer.update(selected)
+                self.rendered_signature = signature
+
+    def refresh_catalog(self):
+        if self.catalog_pending:
+            self.catalog_again = True
+            return
+        self.catalog_pending = True
+        context = self.context
+        def work():
+            return context.data.query('captain', {'op': 'get', 'path': ['build']})
+        def completed(result):
+            self.catalog_pending = False
+            value = result.get('data', {}).get('value')
+            self.catalog_snapshot = PlayerBuild.parse(value) if value is not None and result.get('availability') in {'available', 'partial'} else None
+            fallback = context.builds.get()
+            self.changed(fallback if fallback is not None and fallback.kind != 'live' else None)
+            if self.catalog_again:
+                self.catalog_again = False
+                self.refresh_catalog()
+        context.tasks.submit(work, completed)
 
     def page(self):
         root = Path(__file__).resolve().parents[2]
         self.view = create_view(root, self.context.storage.path.parent / "sets-preview")
         self.view.build_renderer = BuildRenderer(self.view, self.context)
-        self.view.build_renderer.update(self.context.builds.get())
+        self.view.build_renderer.update(self.catalog_snapshot or self.context.builds.get())
         self.view.game_art = GameArt(self.view, self.context)
         self.view.game_art.load()
         self.context.ui.connect(self.view.read_current_captain.clicked, self.read_current)
@@ -157,6 +191,7 @@ class Extension:
         self.pending_read = context.builds.read_current()
         def completed(result):
             self.pending_read = None
+            self.refresh_catalog()
             page.read_current_captain.setEnabled(True)
             page.read_current_captain.setText("Read current Captain")
             page.read_current_captain.setToolTip("Read your Captain from the connected STO session")

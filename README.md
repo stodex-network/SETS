@@ -43,3 +43,5 @@ All versions of this app can be updated by following the installation steps deta
 If you find any information or images missing, please check or update the [official wiki](https://stowiki.net) -- where SETS gets this information. You can report wiki issues on the [Star Trek Online Community Discord Server](https://discord.gg/eApUvTRr5q) in the "#wiki-discussion" channel or on the [STOBuilds Discord Server](https://discord.gg/kxwHxbsqzF) in the "#wiki-update-talk" channel.
 
 For application-related issues or suggestions, please visit the [STOBuilds Discord](https://discord.gg/kxwHxbsqzF) ("#sets-support" channel).
+
+The STOdex Build viewer consumes the Bridge extension's retained `captain.build` catalog on managed workers. Saved Captain profile and ship metadata can be displayed before revisiting Ground and Space. The status identifies a last-known saved composite; explicit reads request fresh supported observations, and uncaptured gear remains unknown.
