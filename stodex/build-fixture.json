@@ -8,22 +8,75 @@
   "source": "authored demonstration",
   "consistency": "snapshot",
   "availability": "partial",
-  "missing_fields": {"slots": "Only demonstration slots were supplied", "skills": "Not observed"},
+  "missing_fields": {
+    "slots": "Only demonstration slots were supplied",
+    "skills": "Not observed"
+  },
   "data": {
     "captain_id": "fixture-captain",
-    "captain": {"name": "Demonstration Captain", "career": "Tactical", "species": "Alien", "faction": "Federation"},
-    "ship": {"id": "fixture-cruiser", "name": "Demonstration Cruiser", "instance_name": "U.S.S. Example", "tier": "T6"},
+    "captain": {
+      "name": "Demonstration Captain",
+      "career": "Tactical",
+      "species": "Alien",
+      "faction": "Federation"
+    },
+    "ship": {
+      "id": "fixture-cruiser",
+      "name": "Demonstration Cruiser",
+      "instance_name": "U.S.S. Example",
+      "tier": "T6"
+    },
     "slots": {
       "space": {
         "fore_weapons": [
-          {"state": "occupied", "item": {"id": "fixture-phaser", "name": "Phaser Beam Array", "rarity": "Very Rare", "mark": "Mk XV", "modifiers": ["CrtD", "Dmg"], "description": "Demonstration item; not a captured player build", "icon": {"archive": "texture.hogg", "member": "Texture_Library/UI/Icons/phaser.wtex"}}},
-          {"state": "empty"},
-          {"state": "unknown", "reason": "Not observed"},
-          {"state": "unavailable"}
+          {
+            "state": "occupied",
+            "item": {
+              "id": "fixture-phaser",
+              "name": "Phaser Beam Array",
+              "rarity": "Very Rare",
+              "mark": "Mk XV",
+              "modifiers": [
+                "CrtD",
+                "Dmg"
+              ],
+              "description": "Demonstration item; not a captured player build",
+              "icon": {
+                "version": 1,
+                "catalog": "resources",
+                "path": [
+                  "images",
+                  "hogg",
+                  "texture.hogg",
+                  "Texture_Library/UI/Icons/phaser.wtex"
+                ]
+              }
+            }
+          },
+          {
+            "state": "empty"
+          },
+          {
+            "state": "unknown",
+            "reason": "Not observed"
+          },
+          {
+            "state": "unavailable"
+          }
         ]
       },
       "ground": {
-        "weapons": [{"state": "occupied", "item": {"id": "fixture-rifle", "name": "Phaser Rifle", "mark": "Mk XV", "description": "Demonstration item without a supplied icon"}}]
+        "weapons": [
+          {
+            "state": "occupied",
+            "item": {
+              "id": "fixture-rifle",
+              "name": "Phaser Rifle",
+              "mark": "Mk XV",
+              "description": "Demonstration item without a supplied icon"
+            }
+          }
+        ]
       }
     }
   }

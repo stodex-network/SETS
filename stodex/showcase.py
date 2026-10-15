@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Interactive supplied-build showcase using icons read from installed HOGGs."""
 import argparse
+import base64
+from stodex.sdk.assets import reference
 import hashlib
 import json
 import os
@@ -12,7 +14,6 @@ from PySide6.QtWidgets import QLabel
 from stodex.__main__ import create_application, create_host
 from stodex.sdk import plain
 from stodex.sdk.builds import BUILD_SLOTS
-from stodex.installation import discover_archive_root
 from types import SimpleNamespace
 
 
@@ -24,12 +25,15 @@ def run():
     args.output.mkdir(parents=True, exist_ok=True)
     app = create_application()
     root = Path(__file__).resolve().parent
-    archives = args.archive_root or discover_archive_root()
+    archives = args.archive_root or None
     if archives is None:
         raise RuntimeError("Configure an installed piggs directory with --archive-root")
     shell, manager, adapter = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=args.output / "storage",
-        extension_dir=[root], archive_root=archives))
+        extensions_dir=args.output / "empty-extensions", extension_options={"stodex.hogg-data":{"archive_root":str(archives)}}))
+    manager.roots = [root.parent, root.parents[1] / "stodex-extension-hogg-data"]
+    manager.discover()
+    manager.activate("stodex.hogg-data"); manager.activate("network.stodex.sets")
     key = ("network.stodex.sets", "build")
     shell.select_page(key)
     package = manager.packages[key[0]]
@@ -46,15 +50,14 @@ def run():
     shell.activateWindow()
     app.aboutToQuit.connect(manager.close)
     app.aboutToQuit.connect(adapter.close)
-    app.aboutToQuit.connect(shell.resources.close)
     state = {"inventory": None, "receipt": None}
 
     def inventory():
-        health = shell.resources.request("health")
+        health = context.data.query("resources", {"op":"health"})
         members, offset = [], 0
         while True:
-            result = shell.resources.list_members("texture.hogg",
-                prefix="Texture_Library/Ui/Icons/Item_Icons/", offset=offset, limit=1000)
+            result = context.data.query("resources", {"op":"list","archive":"texture.hogg",
+                "prefix":"Texture_Library/Ui/Icons/Item_Icons/", "offset":offset, "limit":1000})
             members.extend(member["name"] for member in result["members"]
                            if member["name"].lower().endswith(".wtex"))
             offset += len(result["members"])
@@ -101,7 +104,7 @@ def run():
                         "id": "fixture:" + member, "name": Path(member).stem.replace("_", " "),
                         "rarity": ["Very Rare", "Ultra Rare", "Epic"][index % 3], "mark": "Mk XV",
                         "description": "Icon showcase only; not observed equipped inventory or a catalog join",
-                        "icon": {"archive": "texture.hogg", "member": member},
+                        "icon": reference(["images","hogg","texture.hogg",member]),
                     }})
                 slots[environment][category] = entries
         snapshot = {"schema_version": 1, "kind": "fixture", "session_id": "hogg-showcase",
@@ -119,13 +122,15 @@ def run():
     def verify():
         icons = page.build_renderer.icon_results
         samples = []
-        for (archive, member), result in list(icons.items())[:3]:
-            payload, source = shell.resources.read_member(archive, member)
+        for (catalog, path), result in list(icons.items())[:3]:
+            archive, member = path[-2:]
+            read = context.data.query("resources", {"op":"read","archive":archive,"member":member})
+            payload, source = base64.b64decode(read["data"],validate=True), read["source"]
             digest = hashlib.sha256(payload).hexdigest()
             if digest != result.get("member_sha256"):
                 raise RuntimeError("Displayed icon differs from fresh HOGG read")
             samples.append({"member": member, "sha256": digest, "source": source})
-        return {"health": shell.resources.request("health"), "fresh_read_checks": samples}
+        return {"health": context.data.query("resources", {"op":"health"}), "fresh_read_checks": samples}
 
     def verified(result):
         icons = page.build_renderer.icon_results
@@ -137,7 +142,7 @@ def run():
             "title": shell.windowTitle(), "icons_loaded": loaded, "icons_unavailable": failed,
             "scope": "authored showcase; no live equipped-build acquisition",
             "inventory": state["inventory"], **result,
-            "icons": [{"archive": key[0], "member": key[1],
+            "icons": [{"catalog": key[0], "path": key[1],
                        **plain({k: v for k, v in value.items() if k != 'data'})}
                       for key, value in icons.items()]}
         (args.output / "window.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")

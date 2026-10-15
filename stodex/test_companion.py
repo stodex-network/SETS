@@ -570,7 +570,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
             updated["data"]["captain"]["name"] = "<Captain & Updated>"
             updated["data"]["slots"]["space"]["fore_weapons"][0]["item"]["id"] = "unresolved.native.item"
             updated["data"]["slots"]["space"]["fore_weapons"][0]["item"]["name"] = "<Unknown & Item>"
-            updated["data"]["slots"]["space"]["fore_weapons"][0]["item"]["icon"]["member"] = "missing.wtex"
+            updated["data"]["slots"]["space"]["fore_weapons"][0]["item"]["icon"]["path"][-1] = "missing.wtex"
             assert context.builds.publish(updated)
             wait_for(lambda: "unavailable" in page.build_status.text() and "Loading" not in page.build_status.text())
             assert page.sets_controller.tabbers.build_tabber.currentIndex() == 0
