@@ -1,3 +1,4 @@
+from stodex.sdk.assets import reference as catalog_reference, image as catalog_image
 # SPDX-License-Identifier: GPL-3.0-only
 """Load copied game artwork exclusively through the Companion resources API."""
 import base64
@@ -19,6 +20,8 @@ GAME_ART["ground"] = {"archive": "texture.hogg", "member":
     "Texture_Library/Ui/Icons/Hud_Icons/Hud_Skill_Ground.Wtex"}
 
 
+GAME_ART = {name: catalog_reference(["images", "hogg", value["archive"], value["member"]]) for name, value in GAME_ART.items()}
+
 def prepare_images(images, root):
     # Only application controls come from SETS. No disk cache of game images.
     images._images = {"arrow-up": QImage(root / "local/arrow-up.png"),
@@ -39,7 +42,7 @@ class GameArt:
             self.ready = True
             return
         def load():
-            return {name: self.context.data.query("resources", {"op": "icon", **reference})
+            return {name: catalog_image(self.context.data, reference)
                     for name, reference in GAME_ART.items()}
         def delivered(results):
             self.results = results

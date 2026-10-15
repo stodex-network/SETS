@@ -45,3 +45,5 @@ If you find any information or images missing, please check or update the [offic
 For application-related issues or suggestions, please visit the [STOBuilds Discord](https://discord.gg/kxwHxbsqzF) ("#sets-support" channel).
 
 The STOdex Build viewer consumes the Bridge extension's retained `captain.build` catalog on managed workers. Saved Captain profile and ship metadata can be displayed before revisiting Ground and Space. The status identifies a last-known saved composite; explicit reads request fresh supported observations, and uncaptured gear remains unknown.
+
+STOdex integration now renders image Assets through versioned catalog resource references. The build importer translates legacy artwork locally; renderers use the generic SDK image resolver and retain normal source ordering, provenance, bounds and cancellation behavior. Skill artwork changes are included in the refresh signature to clear stale images.

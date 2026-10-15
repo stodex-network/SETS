@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from stodex.sdk.builds import PlayerBuild
 from stodex.sdk import plain
 from .build_view import BuildRenderer
+from .asset_import import normalize_assets
 from .game_art import GameArt, prepare_images
 
 from PySide6.QtCore import Qt
@@ -147,6 +148,9 @@ class Extension:
             signature = None
             if selected is not None:
                 data = {key: value for key, value in selected.observation.data.items() if key not in {'context_provenance', 'native'}}
+                data['skill_assets'] = [(definition.get('definition_key'), definition.get('icon'), definition.get('icon_token'))
+                    for tree in selected.observation.data.get('native', {}).get('skills', {}).get('trees', ())
+                    for definition in tree.get('definitions', ())]
                 signature = (selected.kind, plain(data), plain(selected.observation.missing_fields))
             if force or signature != self.rendered_signature:
                 self.view.build_renderer.update(selected)
@@ -163,7 +167,7 @@ class Extension:
         def completed(result):
             self.catalog_pending = False
             value = result.get('data', {}).get('value')
-            self.catalog_snapshot = PlayerBuild.parse(value) if value is not None and result.get('availability') in {'available', 'partial'} else None
+            self.catalog_snapshot = PlayerBuild.parse(normalize_assets(value)) if value is not None and result.get('availability') in {'available', 'partial'} else None
             fallback = context.builds.get()
             self.changed(fallback if fallback is not None and fallback.kind != 'live' else None)
             if self.catalog_again:

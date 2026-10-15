@@ -9,6 +9,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
 from stodex.sdk.builds import BUILD_SLOTS
+from stodex.sdk.assets import reference as catalog_reference, image as catalog_image
+from .asset_import import normalize_assets
+
+def asset_key(value):
+    return value["catalog"], tuple(value["path"])
+
 from .catalog_view import catalog_tooltip
 from .captain_layout import skill_layout
 
@@ -70,7 +76,7 @@ class BuildRenderer:
         if snapshot is None:
             data = {}
         else:
-            data = snapshot.observation.data
+            data = normalize_assets(snapshot.observation.data)
         captain, ship = data.get("captain", {}), data.get("ship", {})
         controller.build.character.name.setText(captain.get("name", ""))
         elite = controller.build.character.elite
@@ -113,7 +119,7 @@ class BuildRenderer:
         targets, catalog_targets = {}, {}
         if "icon" in ship:
             reference = ship["icon"]
-            targets[(reference["archive"], reference["member"])] = [controller.build.ship.image]
+            targets[asset_key(reference)] = [controller.build.ship.image]
         self.icon_results = {}
         occupied = unknown = 0
         for environment, categories in BUILD_SLOTS.items():
@@ -166,10 +172,8 @@ class BuildRenderer:
                             button.set_overlay(overlay)
                         if "icon" in item:
                             reference = item["icon"]
-                            key = (reference["archive"], reference["member"])
+                            key = asset_key(reference)
                             targets.setdefault(key, []).append(button)
-                        elif item.get("icon_token"):
-                            targets.setdefault(("token", item["icon_token"]), []).append(button)
                     elif state == "unknown":
                         unknown += 1
                         button.set_item(placeholder("?"))
@@ -186,8 +190,8 @@ class BuildRenderer:
             # Reset the previous observation's image before asynchronous delivery.
             button.set_item(QImage())
             definition = definitions.get(selector["id"])
-            if definition and definition.get("icon_token"):
-                targets.setdefault(("token", definition["icon_token"]), []).append(button)
+            if definition and definition.get("icon"):
+                targets.setdefault(asset_key(definition["icon"]), []).append(button)
         for career, buttons in controller.build.skills.space.items():
             nodes = skills.get("space", {}).get(career, [None] * len(buttons))
             controller.build.skills.count_labels[career].setText(
@@ -222,7 +226,7 @@ class BuildRenderer:
         if not targets:
             return
         if not self.context.data.has_provider("resources"):
-            self.icon_status = "Icons unavailable: HOGG resources not configured"
+            self.icon_status = "Icons unavailable: no resource source configured"
             self.show_status()
             return
         generation = self.generation
@@ -231,12 +235,11 @@ class BuildRenderer:
 
         def load():
             results = []
-            for archive, member in targets:
+            for catalog, path in targets:
                 if cancelled.is_set():
                     break
-                arguments = {"token": member} if archive == "token" else {"archive": archive, "member": member}
-                result = context.data.query("resources", {"op": "icon", **arguments})
-                results.append(((archive, member), result))
+                result = catalog_image(context.data, catalog_reference(path, catalog))
+                results.append(((catalog, path), result))
             return results
 
         def delivered(results):
@@ -247,7 +250,7 @@ class BuildRenderer:
                 self.icon_results[key] = result
                 image = QImage()
                 reason = result.get("reason", "Invalid decoded icon")
-                if result.get("availability") == "available":
+                if result.get("availability") in {"available", "partial"}:
                     try:
                         png = base64.b64decode(result["data"], validate=True)
                         if len(png) > 4 * 1024 * 1024 or len(png) != result["bytes"] or hashlib.sha256(png).hexdigest() != result["sha256"]:
@@ -376,10 +379,11 @@ class BuildRenderer:
                     # Explicit native icon evidence keeps ownership of its artwork.
                     if any("icon" in item or item.get("icon_token") for _, item in targets[key]):
                         continue
-                    identity = result.get("record", {}).get("image", {}).get("id") if result.get("availability") == "available" else None
+                    info = result.get("record", {}).get("image", {}) if result.get("availability") == "available" else {}
+                    identity = info.get("id")
                     if isinstance(identity, str):
                         if identity not in downloaded:
-                            downloaded[identity] = context.data.query("resources", {"op": "get", "path": ["images", identity]})
+                            downloaded[identity] = catalog_image(context.data, info.get("resource") or catalog_reference(["images", identity]))
                         images[key] = downloaded[identity]
                 results.append((keys, response, images))
             return results
@@ -408,7 +412,7 @@ class BuildRenderer:
                         self.catalog_image_results[key] = image_result
                         if image_result.get("availability") in {"available", "partial"}:
                             try:
-                                value = image_result["data"]["value"]
+                                value = image_result
                                 png = base64.b64decode(value["data"], validate=True)
                                 if value["format"] != "png" or len(png) > 4 * 1024 * 1024 or len(png) != value["bytes"] or hashlib.sha256(png).hexdigest() != value["sha256"]:
                                     raise ValueError("Catalog image fingerprint mismatch")

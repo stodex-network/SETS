@@ -10,6 +10,7 @@ import io
 import json
 import struct
 import threading
+import time
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QThread
@@ -26,7 +27,15 @@ from stodex.storage import Data
 @pytest.fixture(autouse=True)
 def isolate_installation_discovery(monkeypatch):
     # Offline host tests use explicit archive fixtures, independent of installed games.
-    monkeypatch.setattr("stodex.__main__.discover_archive_root", lambda pid=None: None)
+    import importlib
+    import types
+    identity = '_stodex_ext_stodex_hogg_data'
+    if identity not in sys.modules:
+        module = types.ModuleType(identity)
+        module.__path__ = [str(Path(__file__).parents[2] / 'stodex-extension-hogg-data')]
+        sys.modules[identity] = module
+    module = importlib.import_module(identity + '.stodex_hogg.installation')
+    monkeypatch.setattr(module, 'discover_archive_root', lambda pid=None: None)
 
 
 @pytest.fixture(scope="session")
@@ -93,6 +102,7 @@ def wait_for(predicate, timeout=5000):
         if predicate():
             return
         QTest.qWait(20)
+        time.sleep(.002)
     assert predicate(), "Build/icon delivery did not complete"
 
 
@@ -171,15 +181,22 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
     # Explicit offline catalog fixture; deactivate independent network sources for these tests.
     providers = {"catalog": catalog or SimpleNamespace(query=lambda _: {"availability": "unavailable", "reason": "Offline fixture"})}
     if resources:
+        if isinstance(resources, ResourcesProvider):
+            spec = importlib.util.spec_from_file_location('_sets_hogg_source', Path(__file__).parents[2] / 'stodex-extension-hogg-data/extension.py', submodule_search_locations=[str(Path(__file__).parents[2] / 'stodex-extension-hogg-data')])
+            source = importlib.util.module_from_spec(spec); sys.modules[spec.name] = source; spec.loader.exec_module(source)
+            resources = source.Provider(resources)
         providers["resources"] = resources
     result = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
-        extension_dir=[],
+        extensions_dir=tmp_path / "empty",
         data=Data(providers),
         build_snapshot=build,
     ))
-    result[1].deactivate("network.stodex.stowiki-data")
-    result[1].deactivate("network.stodex.sets-data")
+    root = Path(__file__).parents[2]
+    result[1].roots = [root / 'SETS', root / 'stodex-extension-bridge-data', root / 'stodex-extension-captain-inspector']
+    result[1].discover()
+    for identity in (('network.stodex.sets',) if build is not None else ('stodex.bridge-data', 'stodex.captain-inspector', 'network.stodex.sets')):
+        result[1].activate(identity)
     return result
 
 
@@ -260,13 +277,14 @@ def test_native_skill_icons_use_resources_without_wiki_downloads(app, tmp_path, 
         Image.new("RGBA", (8, 8), color).save(buffer, format="PNG")
         png = buffer.getvalue()
         images[token] = {"availability": "available", "bytes": len(png), "sha256": hashlib.sha256(png).hexdigest(),
-                         "data": base64.b64encode(png).decode()}
+                         "data": base64.b64encode(png).decode(), "format":"png", "width":8,"height":8}
     queries = []
     def query(arguments):
         queries.append(arguments)
-        if "token" not in arguments:
+        path = arguments.get('path', ())
+        if len(path) != 3 or path[:2] != ('images', 'native'):
             return {"availability": "unavailable", "reason": "No UI artwork in fixture"}
-        return images[arguments["token"]]
+        return {'schema_version':1,'availability':'available','source':'example.images','data':{'value': images[path[2]]}}
     build = fixture_build()
     del build["data"]["slots"]["space"]["fore_weapons"][0]["item"]["icon"]
     build["data"]["skills"] = {"space": {"eng": [True] + [None] * 29},
@@ -288,14 +306,14 @@ def test_native_skill_icons_use_resources_without_wiki_downloads(app, tmp_path, 
         assert space._overlay == page.sets_controller.images.overlays.check
         assert ground._overlay.isNull()
         assert space.property("buildSkillState") == "owned" and ground.property("buildSkillState") == "unowned"
-        assert {q["token"] for q in queries if "token" in q} == set(images)
+        assert {q["path"][-1] for q in queries if q.get("path", ())[:2] == ("images", "native")} == set(images)
         assert manager.builds.get().to_dict() == build
         # A replacement without icon evidence must not keep the previous images.
         replacement = deepcopy(build)
         replacement["revision"] += 1
         del replacement["data"]["native"]
         assert manager.builds.publish(replacement)
-        assert space._base.isNull() and ground._base.isNull()
+        wait_for(lambda: space._base.isNull() and ground._base.isNull())
     finally:
         manager.close(); adapter.close(); shell.close()
 
@@ -437,7 +455,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parent.parent / 'tests/test_resources.py')
+        root.parent / 'stodex-extension-hogg-data/tests/runtime/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -468,7 +486,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
             assert 'Epic' in button.tooltip
             assert button.toolTip() == ''
             assert button.property('buildItemId') == item['id']
-            assert page.build_renderer.icon_results[('token', 'phaser')]['resolution']['member'] == member
+            assert page.build_renderer.icon_results[('resources', ('images', 'native', 'phaser'))]['resolution']['member'] == member
             assert missing.property('buildItemId') == 'missing'
             assert 'Icon unavailable' in missing.tooltip
             assert missing.toolTip() == ''
@@ -498,7 +516,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parent.parent / "tests/test_resources.py"
+    test_path = root.parent / "stodex-extension-hogg-data/tests/runtime/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
@@ -589,7 +607,7 @@ def test_late_icon_delivery_cannot_overwrite_new_build(app, tmp_path):
             started.set()
             assert release.wait(5)
             return {"availability": "available", "bytes": len(png),
-                    "sha256": hashlib.sha256(png).hexdigest(), "data": base64.b64encode(png).decode()}
+                    "sha256": hashlib.sha256(png).hexdigest(), "data": base64.b64encode(png).decode(), "format":"png", "width":8,"height":8}
 
     shell, manager, adapter = make_host(tmp_path, DelayedResources(), fixture_build())
     key = ("network.stodex.sets", "build")
@@ -628,7 +646,7 @@ def test_catalog_image_identity_supplies_static_art_without_replacing_native_ide
             return {"availability": "unavailable"}
         assert tuple(query["path"]) == ("images", "stowiki-image:Catalog Image")
         return {"schema_version": 1, "availability": "available", "source": "sets-data",
-                "data": {"value": {"format": "png", "data": base64.b64encode(png).decode(), "bytes": len(png), "sha256": hashlib.sha256(png).hexdigest()}}}
+                "data": {"value": {"format": "png", "data": base64.b64encode(png).decode(), "bytes": len(png), "sha256": hashlib.sha256(png).hexdigest(), "width":8,"height":8}}}
     def catalog(query):
         return {"schema_version": 1, "availability": "available", "source": "fixture",
                 "data": {"results": [{"availability": "available", "record": {
