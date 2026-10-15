@@ -17,7 +17,9 @@ from PySide6.QtGui import QCursor, QEnterEvent, QHelpEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QToolTip
 from stodex.__main__ import create_host
-from stodex.providers.resources import DEFAULT_HELPER, ResourcesProvider
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "stodex-extension-hogg-data"))
+from stodex_hogg.resources import DEFAULT_HELPER, ResourcesProvider
 from stodex.storage import Data
 
 

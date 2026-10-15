@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QLabel
 from stodex.__main__ import create_application, create_host
 from stodex.sdk import plain
 from stodex.sdk.builds import BUILD_SLOTS
-from stodex.providers.resource_discovery import discover_archive_root
+from stodex.installation import discover_archive_root
 from types import SimpleNamespace
 
 
