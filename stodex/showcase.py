@@ -33,8 +33,8 @@ def run():
         extensions_dir=args.output / "empty-extensions", extension_options={"stodex.core.hogg-resource-client":{"archive_root":str(archives)}}))
     manager.roots = [root.parent, root.parents[1] / "stodex.core.hogg-resource-client"]
     manager.discover()
-    manager.activate("stodex.core.hogg-resource-client"); manager.activate("network.stodex.sets")
-    key = ("network.stodex.sets", "build")
+    manager.activate("stodex.core.hogg-resource-client"); manager.activate("stocd.sets")
+    key = ("stocd.sets", "build")
     shell.select_page(key)
     package = manager.packages[key[0]]
     if package.error:

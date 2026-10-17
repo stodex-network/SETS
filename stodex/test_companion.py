@@ -56,7 +56,7 @@ def test_host_lifecycle_and_offline_view(app, tmp_path, monkeypatch):
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
         extension_dir=[],
     ))
-    key = ("network.stodex.sets", "build")
+    key = ("stocd.sets", "build")
     theme = app.styleSheet()
     try:
         for _ in range(2):
@@ -113,7 +113,7 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
     if not fixture.exists():
         pytest.skip("Build the native Captain fixture first")
     shell, manager, adapter = make_host(tmp_path)
-    key = ("network.stodex.sets", "build")
+    key = ("stocd.sets", "build")
     pending = []
     original = adapter.request
     def request(name, arguments, origin="host"):
@@ -195,7 +195,7 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
     root = Path(__file__).parents[2]
     result[1].roots = [root / 'SETS', root / 'stodex.core.bridge-reshade', root / 'stodex.core.captain-scanner']
     result[1].discover()
-    for identity in (('network.stodex.sets',) if build is not None else ('stodex.core.bridge-reshade', 'stodex.core.captain-scanner', 'network.stodex.sets')):
+    for identity in (('stocd.sets',) if build is not None else ('stodex.core.bridge-reshade', 'stodex.core.captain-scanner', 'stocd.sets')):
         result[1].activate(identity)
     return result
 
@@ -204,8 +204,8 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
 def test_hover_shows_only_sets_tooltip(app, tmp_path, target):
     shell, manager, adapter = make_host(tmp_path, build=fixture_build())
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         controller = page.sets_controller
         targets = {"equipment": (0, controller.build.space.fore_weapons[0]),
                    "unknown-slot": (0, controller.build.space.fore_weapons[2]),
@@ -249,8 +249,8 @@ def test_catalog_provider_is_interchangeable_and_uses_upstream_tooltip(app, tmp_
     build = fixture_build()
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=catalog)
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         wait_for(lambda: "descriptions loaded" in page.build_status.text())
         button = page.sets_controller.build.space.fore_weapons[0]
         assert "Catalog &lt;damage&gt; &amp; description" in button.tooltip
@@ -296,8 +296,8 @@ def test_native_skill_icons_use_resources_without_wiki_downloads(app, tmp_path, 
             {"definition_key": "Player_Skills_Ground.Ground_Skills_C1.Wpn_Dmg_1", "icon_token": "Ground_Damage"}]}]}}
     shell, manager, adapter = make_host(tmp_path, resources=SimpleNamespace(query=query), build=build)
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         wait_for(lambda: "2 icons loaded" in page.build_status.text())
         space = page.sets_controller.build.skills.space["eng"][0]
         ground = page.sets_controller.build.skills.ground[0][0]
@@ -329,7 +329,7 @@ def test_catalog_priority_changes_reenrich_existing_build(app, tmp_path):
     build = fixture_build()
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=catalog("backup"))
     try:
-        key = ("network.stodex.sets", "build")
+        key = ("stocd.sets", "build")
         shell.select_page(key)
         page = shell.pages[key]["widget"]
         button = page.sets_controller.build.space.fore_weapons[0]
@@ -355,8 +355,8 @@ def test_captain_unknown_elite_and_owned_skill_unlocks_render_read_only(app, tmp
                                        "ground": [[False, True], [False, False], [None, None], [False, False], [True, False]]}
     shell, manager, adapter = make_host(tmp_path, build=build)
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         controller = page.sets_controller
         assert controller.build.character.elite.checkState() == Qt.CheckState.PartiallyChecked
         assert controller.build.character.species.currentText() == "Joined Trill"
@@ -368,7 +368,7 @@ def test_captain_unknown_elite_and_owned_skill_unlocks_render_read_only(app, tmp
         assert "Ablative Corruption" in eng[4].tooltip
         assert "Device Expertise" in controller.build.skills.unlocks["ground"][0].tooltip
         assert manager.builds.get().to_dict() == build
-        assert not manager.packages["network.stodex.sets"].error
+        assert not manager.packages["stocd.sets"].error
     finally:
         manager.close(); adapter.close(); shell.close()
 
@@ -394,7 +394,7 @@ def test_late_catalog_response_cannot_replace_new_build_or_disabled_view(app, tm
                     {"kind": "text", "format": "text", "text": "OLD CATALOG RESPONSE"}]}} for _ in query["items"]]}}
     shell, manager, adapter = make_host(tmp_path, build=fixture_build(), catalog=DelayedCatalog())
     try:
-        key = ("network.stodex.sets", "build")
+        key = ("stocd.sets", "build")
         shell.select_page(key)
         page = shell.pages[key]["widget"]
         wait_for(started.is_set)
@@ -436,14 +436,14 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
     normalized = records.normalize("equipment", raw)
     shell, manager, adapter = make_host(tmp_path)
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         cargo = page.sets_controller.cargo
         monkeypatch.setattr(cargo, "get_cargo_data", lambda *_: raw)
         cargo.cache_equipment_data()
         for category, entries in cargo.equipment.items():
             assert set(entries) == {record["name"] for record in normalized if category in record["categories"]}
-        renderer = importlib.import_module("_stodex_ext_network_stodex_sets.stodex.companion_pack.catalog_view")
+        renderer = importlib.import_module("_stodex_ext_stocd_sets.stodex.companion_pack.catalog_view")
         phaser = next(record for record in normalized if record["name"] == "Phaser Beam Array")
         assert renderer.description(phaser["description"], page.sets_controller.theme.tooltips) == cargo.equipment["fore_weapons"]["Phaser Beam Array"]["tooltip"]
     finally:
@@ -477,8 +477,8 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     with ResourcesProvider(archives) as resources:
         shell, manager, adapter = make_host(tmp_path / 'storage', resources, value)
         try:
-            shell.select_page(('network.stodex.sets', 'build'))
-            page = shell.pages[('network.stodex.sets', 'build')]['widget']
+            shell.select_page(('stocd.sets', 'build'))
+            page = shell.pages[('stocd.sets', 'build')]['widget']
             wait_for(lambda: '1 icons loaded' in page.build_status.text())
             button, missing = page.sets_controller.build.space.fore_weapons[:2]
             assert button._base.pixelColor(0, 0).getRgb() == (180, 80, 25, 255)
@@ -535,7 +535,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
         value["data"]["slots"]["ground"]["weapons"][0]["item"]["icon"] = reference
         value["data"]["skills"] = {"space": {"tac": [True] + [None] * 29}}
         shell, manager, adapter = make_host(tmp_path / "storage", resources, value)
-        key = ("network.stodex.sets", "build")
+        key = ("stocd.sets", "build")
         try:
             # Published before lazy page creation; subscriber reads the retained observation.
             shell.select_page(key)
@@ -610,7 +610,7 @@ def test_late_icon_delivery_cannot_overwrite_new_build(app, tmp_path):
                     "sha256": hashlib.sha256(png).hexdigest(), "data": base64.b64encode(png).decode(), "format":"png", "width":8,"height":8}
 
     shell, manager, adapter = make_host(tmp_path, DelayedResources(), fixture_build())
-    key = ("network.stodex.sets", "build")
+    key = ("stocd.sets", "build")
     try:
         shell.select_page(key)
         page = shell.pages[key]["widget"]
@@ -656,8 +656,8 @@ def test_catalog_image_identity_supplies_static_art_without_replacing_native_ide
     build["data"]["slots"]["space"]["fore_weapons"][0]["item"].pop("icon")
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=SimpleNamespace(query=catalog), resources=SimpleNamespace(query=resources))
     try:
-        shell.select_page(("network.stodex.sets", "build"))
-        page = shell.pages[("network.stodex.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets", "build"))
+        page = shell.pages[("stocd.sets", "build")]["widget"]
         button = page.sets_controller.build.space.fore_weapons[0]
         wait_for(lambda: button._base.pixelColor(0, 0).name() == '#ff00ff')
         assert button.property("buildItemId") == "fixture-phaser"
