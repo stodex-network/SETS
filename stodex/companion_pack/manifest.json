@@ -1,5 +1,5 @@
 {
-  "id": "stocd.sets",
+  "id": "stocd.sets.build-manager",
   "name": "SETS Build Viewer",
   "version": "0.7.0",
   "extensionApiVersion": 1,

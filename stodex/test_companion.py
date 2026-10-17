@@ -19,7 +19,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QToolTip
 from stodex.__main__ import create_host
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "stodex.core.hogg-resource-client"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "stodex.hogg-resources.client"))
 from stodex_hogg.resources import DEFAULT_HELPER, ResourcesProvider
 from stodex.storage import Data
 
@@ -29,10 +29,10 @@ def isolate_installation_discovery(monkeypatch):
     # Offline host tests use explicit archive fixtures, independent of installed games.
     import importlib
     import types
-    identity = '_stodex_ext_stodex_core_hogg_resource_client'
+    identity = '_stodex_ext_stodex_hogg_resources_client'
     if identity not in sys.modules:
         module = types.ModuleType(identity)
-        module.__path__ = [str(Path(__file__).parents[2] / 'stodex.core.hogg-resource-client')]
+        module.__path__ = [str(Path(__file__).parents[2] / 'stodex.hogg-resources.client')]
         sys.modules[identity] = module
     module = importlib.import_module(identity + '.stodex_hogg.installation')
     monkeypatch.setattr(module, 'discover_archive_root', lambda pid=None: None)
@@ -56,7 +56,7 @@ def test_host_lifecycle_and_offline_view(app, tmp_path, monkeypatch):
         mock=True, pid=None, fixture="typical", storage_dir=tmp_path,
         extension_dir=[],
     ))
-    key = ("stocd.sets", "build")
+    key = ("stocd.sets.build-manager", "build")
     theme = app.styleSheet()
     try:
         for _ in range(2):
@@ -113,7 +113,7 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
     if not fixture.exists():
         pytest.skip("Build the native Captain fixture first")
     shell, manager, adapter = make_host(tmp_path)
-    key = ("stocd.sets", "build")
+    key = ("stocd.sets.build-manager", "build")
     pending = []
     original = adapter.request
     def request(name, arguments, origin="host"):
@@ -182,7 +182,7 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
     providers = {"catalog": catalog or SimpleNamespace(query=lambda _: {"availability": "unavailable", "reason": "Offline fixture"})}
     if resources:
         if isinstance(resources, ResourcesProvider):
-            spec = importlib.util.spec_from_file_location('_sets_hogg_source', Path(__file__).parents[2] / 'stodex.core.hogg-resource-client/extension.py', submodule_search_locations=[str(Path(__file__).parents[2] / 'stodex.core.hogg-resource-client')])
+            spec = importlib.util.spec_from_file_location('_sets_hogg_source', Path(__file__).parents[2] / 'stodex.hogg-resources.client/extension.py', submodule_search_locations=[str(Path(__file__).parents[2] / 'stodex.hogg-resources.client')])
             source = importlib.util.module_from_spec(spec); sys.modules[spec.name] = source; spec.loader.exec_module(source)
             resources = source.Provider(resources)
         providers["resources"] = resources
@@ -193,9 +193,9 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
         build_snapshot=build,
     ))
     root = Path(__file__).parents[2]
-    result[1].roots = [root / 'SETS', root / 'stodex.core.bridge-reshade', root / 'stodex.core.captain-scanner']
+    result[1].roots = [root / 'stocd.sets.build-manager', root / 'stodex.bridge', root / 'stodex.inspector.captain']
     result[1].discover()
-    for identity in (('stocd.sets',) if build is not None else ('stodex.core.bridge-reshade', 'stodex.core.captain-scanner', 'stocd.sets')):
+    for identity in (('stocd.sets.build-manager',) if build is not None else ('stodex.bridge', 'stodex.inspector.captain', 'stocd.sets.build-manager')):
         result[1].activate(identity)
     return result
 
@@ -204,8 +204,8 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
 def test_hover_shows_only_sets_tooltip(app, tmp_path, target):
     shell, manager, adapter = make_host(tmp_path, build=fixture_build())
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         controller = page.sets_controller
         targets = {"equipment": (0, controller.build.space.fore_weapons[0]),
                    "unknown-slot": (0, controller.build.space.fore_weapons[2]),
@@ -249,8 +249,8 @@ def test_catalog_provider_is_interchangeable_and_uses_upstream_tooltip(app, tmp_
     build = fixture_build()
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=catalog)
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         wait_for(lambda: "descriptions loaded" in page.build_status.text())
         button = page.sets_controller.build.space.fore_weapons[0]
         assert "Catalog &lt;damage&gt; &amp; description" in button.tooltip
@@ -296,8 +296,8 @@ def test_native_skill_icons_use_resources_without_wiki_downloads(app, tmp_path, 
             {"definition_key": "Player_Skills_Ground.Ground_Skills_C1.Wpn_Dmg_1", "icon_token": "Ground_Damage"}]}]}}
     shell, manager, adapter = make_host(tmp_path, resources=SimpleNamespace(query=query), build=build)
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         wait_for(lambda: "2 icons loaded" in page.build_status.text())
         space = page.sets_controller.build.skills.space["eng"][0]
         ground = page.sets_controller.build.skills.ground[0][0]
@@ -329,7 +329,7 @@ def test_catalog_priority_changes_reenrich_existing_build(app, tmp_path):
     build = fixture_build()
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=catalog("backup"))
     try:
-        key = ("stocd.sets", "build")
+        key = ("stocd.sets.build-manager", "build")
         shell.select_page(key)
         page = shell.pages[key]["widget"]
         button = page.sets_controller.build.space.fore_weapons[0]
@@ -355,8 +355,8 @@ def test_captain_unknown_elite_and_owned_skill_unlocks_render_read_only(app, tmp
                                        "ground": [[False, True], [False, False], [None, None], [False, False], [True, False]]}
     shell, manager, adapter = make_host(tmp_path, build=build)
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         controller = page.sets_controller
         assert controller.build.character.elite.checkState() == Qt.CheckState.PartiallyChecked
         assert controller.build.character.species.currentText() == "Joined Trill"
@@ -368,7 +368,7 @@ def test_captain_unknown_elite_and_owned_skill_unlocks_render_read_only(app, tmp
         assert "Ablative Corruption" in eng[4].tooltip
         assert "Device Expertise" in controller.build.skills.unlocks["ground"][0].tooltip
         assert manager.builds.get().to_dict() == build
-        assert not manager.packages["stocd.sets"].error
+        assert not manager.packages["stocd.sets.build-manager"].error
     finally:
         manager.close(); adapter.close(); shell.close()
 
@@ -394,7 +394,7 @@ def test_late_catalog_response_cannot_replace_new_build_or_disabled_view(app, tm
                     {"kind": "text", "format": "text", "text": "OLD CATALOG RESPONSE"}]}} for _ in query["items"]]}}
     shell, manager, adapter = make_host(tmp_path, build=fixture_build(), catalog=DelayedCatalog())
     try:
-        key = ("stocd.sets", "build")
+        key = ("stocd.sets.build-manager", "build")
         shell.select_page(key)
         page = shell.pages[key]["widget"]
         wait_for(started.is_set)
@@ -418,7 +418,7 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
     import importlib
     # Load the source extension independently, exactly as the real host does.
     module_name = "_sets_test_wiki_source"
-    source_root = Path(__file__).resolve().parents[2] / "stodex.data-stowiki"
+    source_root = Path(__file__).resolve().parents[2] / "stodex.db.stowiki-net"
     spec = importlib.util.spec_from_file_location(module_name, source_root / "extension.py", submodule_search_locations=[str(source_root)])
     module = importlib.util.module_from_spec(spec)
     import sys
@@ -436,14 +436,14 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
     normalized = records.normalize("equipment", raw)
     shell, manager, adapter = make_host(tmp_path)
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         cargo = page.sets_controller.cargo
         monkeypatch.setattr(cargo, "get_cargo_data", lambda *_: raw)
         cargo.cache_equipment_data()
         for category, entries in cargo.equipment.items():
             assert set(entries) == {record["name"] for record in normalized if category in record["categories"]}
-        renderer = importlib.import_module("_stodex_ext_stocd_sets.stodex.companion_pack.catalog_view")
+        renderer = importlib.import_module("_stodex_ext_stocd_sets_build_manager.stodex.companion_pack.catalog_view")
         phaser = next(record for record in normalized if record["name"] == "Phaser Beam Array")
         assert renderer.description(phaser["description"], page.sets_controller.theme.tooltips) == cargo.equipment["fore_weapons"]["Phaser Beam Array"]["tooltip"]
     finally:
@@ -455,7 +455,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parent / 'stodex.core.hogg-resource-client/tests/runtime/test_resources.py')
+        root.parent / 'stodex.hogg-resources.client/tests/runtime/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -477,8 +477,8 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     with ResourcesProvider(archives) as resources:
         shell, manager, adapter = make_host(tmp_path / 'storage', resources, value)
         try:
-            shell.select_page(('stocd.sets', 'build'))
-            page = shell.pages[('stocd.sets', 'build')]['widget']
+            shell.select_page(('stocd.sets.build-manager', 'build'))
+            page = shell.pages[('stocd.sets.build-manager', 'build')]['widget']
             wait_for(lambda: '1 icons loaded' in page.build_status.text())
             button, missing = page.sets_controller.build.space.fore_weapons[:2]
             assert button._base.pixelColor(0, 0).getRgb() == (180, 80, 25, 255)
@@ -516,7 +516,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parent / "stodex.core.hogg-resource-client/tests/runtime/test_resources.py"
+    test_path = root.parent / "stodex.hogg-resources.client/tests/runtime/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
@@ -535,7 +535,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
         value["data"]["slots"]["ground"]["weapons"][0]["item"]["icon"] = reference
         value["data"]["skills"] = {"space": {"tac": [True] + [None] * 29}}
         shell, manager, adapter = make_host(tmp_path / "storage", resources, value)
-        key = ("stocd.sets", "build")
+        key = ("stocd.sets.build-manager", "build")
         try:
             # Published before lazy page creation; subscriber reads the retained observation.
             shell.select_page(key)
@@ -610,7 +610,7 @@ def test_late_icon_delivery_cannot_overwrite_new_build(app, tmp_path):
                     "sha256": hashlib.sha256(png).hexdigest(), "data": base64.b64encode(png).decode(), "format":"png", "width":8,"height":8}
 
     shell, manager, adapter = make_host(tmp_path, DelayedResources(), fixture_build())
-    key = ("stocd.sets", "build")
+    key = ("stocd.sets.build-manager", "build")
     try:
         shell.select_page(key)
         page = shell.pages[key]["widget"]
@@ -656,8 +656,8 @@ def test_catalog_image_identity_supplies_static_art_without_replacing_native_ide
     build["data"]["slots"]["space"]["fore_weapons"][0]["item"].pop("icon")
     shell, manager, adapter = make_host(tmp_path, build=build, catalog=SimpleNamespace(query=catalog), resources=SimpleNamespace(query=resources))
     try:
-        shell.select_page(("stocd.sets", "build"))
-        page = shell.pages[("stocd.sets", "build")]["widget"]
+        shell.select_page(("stocd.sets.build-manager", "build"))
+        page = shell.pages[("stocd.sets.build-manager", "build")]["widget"]
         button = page.sets_controller.build.space.fore_weapons[0]
         wait_for(lambda: button._base.pixelColor(0, 0).name() == '#ff00ff')
         assert button.property("buildItemId") == "fixture-phaser"

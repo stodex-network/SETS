@@ -30,11 +30,11 @@ def run():
         raise RuntimeError("Configure an installed piggs directory with --archive-root")
     shell, manager, adapter = create_host(SimpleNamespace(
         mock=True, pid=None, fixture="typical", storage_dir=args.output / "storage",
-        extensions_dir=args.output / "empty-extensions", extension_options={"stodex.core.hogg-resource-client":{"archive_root":str(archives)}}))
-    manager.roots = [root.parent, root.parents[1] / "stodex.core.hogg-resource-client"]
+        extensions_dir=args.output / "empty-extensions", extension_options={"stodex.hogg-resources.client":{"archive_root":str(archives)}}))
+    manager.roots = [root.parent, root.parents[1] / "stodex.hogg-resources.client"]
     manager.discover()
-    manager.activate("stodex.core.hogg-resource-client"); manager.activate("stocd.sets")
-    key = ("stocd.sets", "build")
+    manager.activate("stodex.hogg-resources.client"); manager.activate("stocd.sets.build-manager")
+    key = ("stocd.sets.build-manager", "build")
     shell.select_page(key)
     package = manager.packages[key[0]]
     if package.error:
