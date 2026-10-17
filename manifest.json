@@ -2,10 +2,10 @@
   "id": "stocd.sets",
   "name": "SETS Build Viewer",
   "author": "Kurgh",
-  "version": "0.8.3",
+  "version": "3.1.2-stodex.0.8.3",
   "extensionApiVersion": 1,
   "entrypoint": "extension.py:create_extension",
-  "dependencies": ["stodex>=0.2.13"],
+  "dependencies": ["stodex>=0.2.17"],
   "capabilities": [
     "ui.pages",
     "builds.snapshots",
