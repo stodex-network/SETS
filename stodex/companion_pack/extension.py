@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from stodex.sdk.builds import PlayerBuild
 from stodex.sdk import plain
+from stodex.sdk.widgets import refresh_when_visible
 from .build_view import BuildRenderer
 from .asset_import import normalize_assets
 from .game_art import GameArt, prepare_images
@@ -136,11 +137,15 @@ class Extension:
         self.catalog_pending = False
         self.catalog_again = False
         self.rendered_signature = None
+        self.catalog_value = None
+        self.render_forced = False
+        # Display work only while the Build page is on screen: data changes made while it is
+        # hidden mark it stale and it catches up once when shown (owner rule, 2026-10-17).
+        self.request_catalog = self.request_render = None
         context.ui.register_page("build", "Build", self.page)
-        context.builds.subscribe(self.changed)
-        context.data.subscribe("catalog", lambda _: self.changed(context.builds.get(), force=True))
+        context.builds.subscribe(lambda _snapshot: self.render())
+        context.data.subscribe("catalog", lambda _: self.render(force=True))
         context.data.subscribe("captain", lambda _: self.refresh_catalog())
-        self.refresh_catalog()
 
     def changed(self, snapshot, force=False):
         if self.view is not None:
@@ -156,20 +161,44 @@ class Extension:
                 self.view.build_renderer.update(selected)
                 self.rendered_signature = signature
 
+    def render(self, force=False):
+        """Re-render the Build page from the current build, now if it is on screen, else when next shown."""
+        self.render_forced = self.render_forced or force
+        if self.request_render is not None:
+            self.request_render()
+        elif self.view is not None:
+            self._render_now()
+
+    def _render_now(self):
+        force, self.render_forced = self.render_forced, False
+        self.changed(self.context.builds.get(), force=force)
+
     def refresh_catalog(self):
+        if self.request_catalog is not None:
+            self.request_catalog()
+        elif self.view is not None:  # A view supplied without page() (tests) refreshes directly.
+            self._refresh_catalog_now()
+
+    def _refresh_catalog_now(self):
         if self.catalog_pending:
             self.catalog_again = True
             return
         self.catalog_pending = True
-        context = self.context
+        context, previous = self.context, self.catalog_value
+        unchanged = object()
         def work():
-            return context.data.query('captain', {'op': 'get', 'path': ['build']})
-        def completed(result):
+            # Fetching, normalising and parsing the whole build stays off the GUI thread.
+            result = context.data.query('captain', {'op': 'get', 'path': ['build']})
+            value = result.get('data', {}).get('value') if result.get('availability') in {'available', 'partial'} else None
+            if value == previous:
+                return unchanged
+            return value, (PlayerBuild.parse(normalize_assets(value)) if value is not None else None)
+        def completed(outcome):
             self.catalog_pending = False
-            value = result.get('data', {}).get('value')
-            self.catalog_snapshot = PlayerBuild.parse(normalize_assets(value)) if value is not None and result.get('availability') in {'available', 'partial'} else None
-            fallback = context.builds.get()
-            self.changed(fallback if fallback is not None and fallback.kind != 'live' else None)
+            if outcome is not unchanged:
+                self.catalog_value, self.catalog_snapshot = outcome
+                fallback = context.builds.get()
+                self.changed(fallback if fallback is not None and fallback.kind != 'live' else None)
             if self.catalog_again:
                 self.catalog_again = False
                 self.refresh_catalog()
@@ -183,6 +212,9 @@ class Extension:
         self.view.game_art = GameArt(self.view, self.context)
         self.view.game_art.load()
         self.context.ui.connect(self.view.read_current_captain.clicked, self.read_current)
+        self.request_catalog = refresh_when_visible(self.view, self._refresh_catalog_now)
+        self.request_render = refresh_when_visible(self.view, self._render_now)
+        self.request_catalog()  # Read the recorded Captain once the page is first shown.
         return self.view
 
     def read_current(self):
