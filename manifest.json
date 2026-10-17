@@ -1,7 +1,8 @@
 {
   "id": "network.stodex.sets",
   "name": "SETS Build Viewer",
-  "version": "0.8.1",
+  "author": "Kurgh",
+  "version": "0.8.2",
   "extensionApiVersion": 1,
   "entrypoint": "extension.py:create_extension",
   "dependencies": ["stodex>=0.2.13"],

@@ -19,7 +19,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QToolTip
 from stodex.__main__ import create_host
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "core.hogg-resource-client"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "stodex.core.hogg-resource-client"))
 from stodex_hogg.resources import DEFAULT_HELPER, ResourcesProvider
 from stodex.storage import Data
 
@@ -29,10 +29,10 @@ def isolate_installation_discovery(monkeypatch):
     # Offline host tests use explicit archive fixtures, independent of installed games.
     import importlib
     import types
-    identity = '_stodex_ext_core_hogg_resource_client'
+    identity = '_stodex_ext_stodex_core_hogg_resource_client'
     if identity not in sys.modules:
         module = types.ModuleType(identity)
-        module.__path__ = [str(Path(__file__).parents[2] / 'core.hogg-resource-client')]
+        module.__path__ = [str(Path(__file__).parents[2] / 'stodex.core.hogg-resource-client')]
         sys.modules[identity] = module
     module = importlib.import_module(identity + '.stodex_hogg.installation')
     monkeypatch.setattr(module, 'discover_archive_root', lambda pid=None: None)
@@ -182,7 +182,7 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
     providers = {"catalog": catalog or SimpleNamespace(query=lambda _: {"availability": "unavailable", "reason": "Offline fixture"})}
     if resources:
         if isinstance(resources, ResourcesProvider):
-            spec = importlib.util.spec_from_file_location('_sets_hogg_source', Path(__file__).parents[2] / 'core.hogg-resource-client/extension.py', submodule_search_locations=[str(Path(__file__).parents[2] / 'core.hogg-resource-client')])
+            spec = importlib.util.spec_from_file_location('_sets_hogg_source', Path(__file__).parents[2] / 'stodex.core.hogg-resource-client/extension.py', submodule_search_locations=[str(Path(__file__).parents[2] / 'stodex.core.hogg-resource-client')])
             source = importlib.util.module_from_spec(spec); sys.modules[spec.name] = source; spec.loader.exec_module(source)
             resources = source.Provider(resources)
         providers["resources"] = resources
@@ -193,9 +193,9 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
         build_snapshot=build,
     ))
     root = Path(__file__).parents[2]
-    result[1].roots = [root / 'SETS', root / 'core.bridge-reshade', root / 'core.captain-inspector']
+    result[1].roots = [root / 'SETS', root / 'stodex.core.bridge-reshade', root / 'stodex.core.captain-scanner']
     result[1].discover()
-    for identity in (('network.stodex.sets',) if build is not None else ('core.bridge-reshade', 'core.captain-inspector', 'network.stodex.sets')):
+    for identity in (('network.stodex.sets',) if build is not None else ('stodex.core.bridge-reshade', 'stodex.core.captain-scanner', 'network.stodex.sets')):
         result[1].activate(identity)
     return result
 
@@ -418,7 +418,7 @@ def test_stowiki_port_matches_upstream_equipment_categories_and_tooltip(app, tmp
     import importlib
     # Load the source extension independently, exactly as the real host does.
     module_name = "_sets_test_wiki_source"
-    source_root = Path(__file__).resolve().parents[2] / "core.data-stowiki"
+    source_root = Path(__file__).resolve().parents[2] / "stodex.data-stowiki"
     spec = importlib.util.spec_from_file_location(module_name, source_root / "extension.py", submodule_search_locations=[str(source_root)])
     module = importlib.util.module_from_spec(spec)
     import sys
@@ -455,7 +455,7 @@ def test_native_item_tokens_load_actual_icons_and_keep_missing_placeholders(app,
     from PIL import Image
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location('sets_token_hogg_fixtures',
-        root.parent / 'core.hogg-resource-client/tests/runtime/test_resources.py')
+        root.parent / 'stodex.core.hogg-resource-client/tests/runtime/test_resources.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     image = Image.new('RGBA', (32, 32), (180, 80, 25, 255))
@@ -516,7 +516,7 @@ def test_published_build_populates_items_from_hogg_and_survives_reactivation(app
 
     monkeypatch.setattr(requests.sessions.Session, "request", lambda *a, **k: pytest.fail("Wiki request"))
     root = Path(__file__).resolve().parents[1]
-    test_path = root.parent / "core.hogg-resource-client/tests/runtime/test_resources.py"
+    test_path = root.parent / "stodex.core.hogg-resource-client/tests/runtime/test_resources.py"
     spec = importlib.util.spec_from_file_location("sets_hogg_fixtures", test_path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
