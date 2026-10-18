@@ -125,6 +125,15 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
         return operation
     monkeypatch.setattr(adapter, "request", request)
     adapter.capabilities["captain.build.get"] = {"available": True, "status": "available"}
+    # Projection lives in the Bridge extension; the mock adapter has none.
+    bridge = Path(__file__).parents[2] / "stodex.bridge"
+    spec = importlib.util.spec_from_file_location("_sets_test_bridge", bridge / "extension.py", submodule_search_locations=[str(bridge)])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    from _sets_test_bridge.build_projection import from_bridge
+    from _sets_test_bridge.captain_layout import skill_layout
+    monkeypatch.setattr(adapter, "project_build", lambda value: from_bridge(value, skill_layout()), raising=False)
     try:
         shell.select_page(key)
         page = shell.pages[key]["widget"]
@@ -150,7 +159,9 @@ def test_explicit_current_captain_read_and_late_completion(app, tmp_path, monkey
         assert page.sets_controller.build.ground.armor[0].property("buildItemId") == "Native_Armor"
         assert page.sets_controller.build.space.doffs_spec[0].currentText() == "Observed Duty Officer"
         assert page.sets_controller.build.space.doffs_spec[1].currentText() == "empty"
-        assert manager.data.query("captain", {"op": "get", "path": ["duty-officers", "88001", "assignment"]})["data"]["value"]["environment"] == "space"
+        query = {"op": "get", "path": ["duty-officers", "88001", "assignment"]}
+        wait_for(lambda: manager.data.query("bridge.captain", query)["availability"] != "unavailable")
+        assert manager.data.query("bridge.captain", query)["data"]["value"]["environment"] == "space"
         retained = manager.builds.get()
         assert retained.observation.data["native"]["traits"]["primary"]["slots"][0]["power_id"] == 7
         page.read_current_captain.click()
@@ -197,6 +208,8 @@ def make_host(tmp_path, resources=None, build=None, catalog=None):
     result[1].discover()
     for identity in (('stocd.sets.build-manager',) if build is not None else ('stodex.bridge', 'stodex.inspector.captain', 'stocd.sets.build-manager')):
         result[1].activate(identity)
+    # The Build page renders only while on screen; tests run offscreen.
+    result[0].show()
     return result
 
 
@@ -403,9 +416,8 @@ def test_late_catalog_response_cannot_replace_new_build_or_disabled_view(app, tm
         replacement["data"]["slots"] = {"space": {"fore_weapons": [{"state": "empty"}]}}
         assert manager.builds.publish(replacement)
         release.set()
-        QTest.qWait(100)
+        wait_for(lambda: page.sets_controller.build.space.fore_weapons[0].property("buildSlotState") == "empty")
         button = page.sets_controller.build.space.fore_weapons[0]
-        assert button.property("buildSlotState") == "empty"
         assert "OLD CATALOG RESPONSE" not in button.tooltip
         manager.deactivate(key[0])
         QTest.qWait(50)
@@ -625,7 +637,7 @@ def test_late_icon_delivery_cannot_overwrite_new_build(app, tmp_path):
         assert button.property("buildSlotState") == "empty"
         assert button._base is None
         manager.builds.clear()
-        assert page.build_status.text() == "SETS build viewer · No player build loaded"
+        wait_for(lambda: page.build_status.text() == "SETS build viewer · No player build loaded")
         assert not manager.packages[key[0]].error
     finally:
         release.set()
